@@ -1,0 +1,7 @@
+/* app/globals.css */
+@import "tailwindcss";
+@layer utilities {
+  .font-display {
+    font-family: var(--font-serif), Georgia, serif;
+  }
+}
