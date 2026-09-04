@@ -35,10 +35,7 @@ router.post("/:paperId/purchase", async (req, res) => {
   try {
     const collectionResponse = await initiateCollection({
       phoneNumber,
-      email,
-      firstName: firstName || "Parent",
-      lastName: lastName || "Buyer",
-      amount: paper.price,
+     amount: paper.price,
       apiRef: `purchase-${purchaseId}`,
     });
 

@@ -162,3 +162,81 @@ export async function getPayoutStatus(
 
   return body as InitiatePayoutResponse;
 }
+/**
+ * Thin client around IntaSend's M-Pesa STK Push (Payment Collection) API.
+ *
+ * Docs: https://developers.intasend.com/docs/m-pesa-stk-push
+ * Confirmed request/response shape via IntaSend's OpenAPI spec directly -
+ * this endpoint only accepts amount, phone_number, and api_ref (no email
+ * or name fields), and returns the invoice nested under response.invoice.
+ */
+
+export interface InitiateCollectionParams {
+  phoneNumber: string;
+  amount: number;
+  apiRef: string;
+}
+
+export interface IntaSendInvoice {
+  invoice_id: string;
+  state: "PENDING" | "PROCESSING" | "FAILED" | "CANCELED" | "PARTIAL" | "COMPLETE" | "RETRY";
+  provider: string;
+  net_amount?: string;
+  currency: string;
+  value?: string;
+  account?: string;
+  api_ref?: string;
+}
+
+export interface InitiateCollectionResponse {
+  id: string;
+  invoice: IntaSendInvoice;
+  [key: string]: unknown;
+}
+
+export async function initiateCollection(
+  params: InitiateCollectionParams
+): Promise<InitiateCollectionResponse> {
+  const { phoneNumber, amount, apiRef } = params;
+
+  if (!INTASEND_SECRET_KEY) {
+    throw new Error("INTASEND_SECRET_KEY is not configured");
+  }
+  if (amount <= 0) {
+    throw new Error(`Collection amount must be positive, got ${amount}`);
+  }
+
+  const account = normalizePhoneNumber(phoneNumber);
+
+  const payload = {
+    amount: amount.toFixed(2),
+    phone_number: account,
+    api_ref: apiRef,
+  };
+
+  const response = await fetch(`${BASE_URL}/payment/mpesa-stk-push/`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${INTASEND_SECRET_KEY}`,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const body = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const message =
+      (body && (body.detail || body.message || JSON.stringify(body))) ||
+      `IntaSend STK Push request failed with status ${response.status}`;
+    throw new Error(message);
+  }
+
+  if (!body || !body.invoice || !body.invoice.invoice_id) {
+    throw new Error(
+      `IntaSend STK Push response missing invoice: ${JSON.stringify(body)}`
+    );
+  }
+
+  return body as InitiateCollectionResponse;
+}
