@@ -25,7 +25,9 @@ function LoginForm() {
 
   const justRegistered = searchParams.get("registered") === "1";
 
+
   const [email, setEmail] = useState("");
+
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +38,7 @@ function LoginForm() {
     setError(null);
     setSubmitting(true);
     try {
-      const teacher = await login({ email, password });
+      const teacher = await login({ identifier: email, password });
       router.replace(teacher.onboardingPaid ? "/dashboard/upload" : "/activate");
     } catch (err) {
       setError(

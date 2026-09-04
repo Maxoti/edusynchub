@@ -61,7 +61,7 @@ export interface SignUpPayload {
 }
 
 export interface LoginPayload {
-  email: string;
+  identifier: string;
   password: string;
 }
 
