@@ -11,6 +11,14 @@ export interface TeacherProfile {
   subscriptionExpiresAt: string | null;
 }
 
+function isOwnerEmail(email: string): boolean {
+  const ownerEmails = (process.env.OWNER_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return ownerEmails.includes(email.toLowerCase());
+}
+
 export async function getTeacherProfile(
   teacherId: number
 ): Promise<TeacherProfile | null> {
@@ -38,5 +46,12 @@ export async function getTeacherProfile(
     [teacherId]
   );
 
-  return rows[0] ?? null;
+  const profile = rows[0] ?? null;
+
+  if (profile && isOwnerEmail(profile.email)) {
+    profile.onboardingPaid = true;
+  }
+
+  return profile;
 }
+

@@ -50,3 +50,5 @@ next-env.d.ts
 # editor
 .vscode/*
 !.vscode/extensions.json
+.vercel
+.env*
