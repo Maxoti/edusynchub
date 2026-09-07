@@ -12,6 +12,7 @@ CREATE TABLE public.teachers (
     email character varying(255) NOT NULL UNIQUE,
     password_hash character varying(255) NOT NULL,
     name character varying(255) NOT NULL,
+    slug character varying(150) NOT NULL UNIQUE;
     business_name character varying(255),
     status character varying(20) NOT NULL DEFAULT 'active', -- active | suspended
     created_at timestamp without time zone DEFAULT now()
@@ -19,6 +20,7 @@ CREATE TABLE public.teachers (
 
 CREATE INDEX idx_teachers_phone ON public.teachers USING btree (phone_number);
 CREATE INDEX idx_teachers_email ON public.teachers USING btree (email);
+CREATE INDEX idx_teachers_slug ON public.teachers USING btree (slug);
 
 -- 2. OTP CODES -------------------------------------------------------
 -- Buyer phone verification, unrelated to teacher tenancy.

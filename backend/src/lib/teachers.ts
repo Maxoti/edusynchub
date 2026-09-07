@@ -6,6 +6,7 @@ export interface TeacherProfile {
   email: string;
   phone_number: string;
   business_name: string | null;
+  slug: string | null;
   onboardingPaid: boolean;
   subscriptionTier: string | null;
   subscriptionExpiresAt: string | null;
@@ -29,6 +30,7 @@ export async function getTeacherProfile(
        t.email,
        t.phone_number,
        t.business_name,
+       t.slug,
        EXISTS (
          SELECT 1 FROM subscriptions s
          WHERE s.teacher_id = t.id

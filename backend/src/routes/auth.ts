@@ -4,6 +4,7 @@ import { pool } from "../lib/db";
 import { signTeacherToken } from "../lib/jwt";
 import { requireAuth, AuthedRequest } from "../middleware/auth";
 import { getTeacherProfile } from "../lib/teachers";
+import { generateUniqueSlug } from "../lib/slug";
 
 const router = Router();
 
@@ -37,12 +38,13 @@ router.post("/signup", async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const slug = await generateUniqueSlug(name);
 
     const inserted = await client.query(
-      `INSERT INTO teachers (name, email, phone_number, pochi_number, password_hash, status)
-       VALUES ($1, $2, $3, $3, $4, 'active')
+      `INSERT INTO teachers (name, email, phone_number, pochi_number, password_hash, status, slug)
+       VALUES ($1, $2, $3, $3, $4, 'active', $5)
        RETURNING id`,
-      [name, email, phone, passwordHash]
+      [name, email, phone, passwordHash, slug]
     );
     const teacherId = inserted.rows[0].id;
 
@@ -51,9 +53,6 @@ router.post("/signup", async (req, res) => {
       [teacherId]
     );
 
-    // 3-day free trial: expires_at drives the same onboardingPaid check
-    // that will later be satisfied by a real KES 499 monthly payment,
-    // so no separate "lock" logic is needed once this expires.
     await client.query(
       `INSERT INTO subscriptions (teacher_id, tier, status, expires_at)
        VALUES ($1, 'trial', 'active', now() + interval '3 days')`,
@@ -117,3 +116,4 @@ router.get("/me", requireAuth, async (req: AuthedRequest, res) => {
 });
 
 export default router;
+

@@ -9,6 +9,7 @@ import walletRouter from "./routes/wallet";
 import webhooksRouter from "./routes/webhooks";
 import uploadsRouter from "./routes/uploads";
 import examsRouter from "./routes/exams";
+import storeRouter from "./routes/store";
 
 const app = express();
 
@@ -23,11 +24,11 @@ app.use("/wallet", walletRouter);
 app.use("/webhooks", webhooksRouter);
 app.use("/uploads", uploadsRouter);
 app.use("/exams", examsRouter);
+app.use("/store", storeRouter);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-const port = process.env.PORT ?? 10000;
+const port = process.env.PORT ?? 4000;
 app.listen(port, () => {
   console.log(`EdusyncHub backend listening on port ${port}`);
 });
-
