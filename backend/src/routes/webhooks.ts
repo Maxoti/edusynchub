@@ -62,7 +62,7 @@ async function handleCollectionEvent(body: any, res: any) {
     await client.query(
       `UPDATE purchases
        SET status = 'paid', download_token = $1,
-           token_expires_at = now() + interval '60 seconds', updated_at = now()
+           token_expires_at = now() + interval '24 hours', updated_at = now()
        WHERE id = $2`,
       [downloadToken, purchase.id]
     );
@@ -162,3 +162,4 @@ async function handlePayoutEvent(body: any, res: any) {
 }
 
 export default router;
+

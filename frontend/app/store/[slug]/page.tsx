@@ -1,7 +1,7 @@
 "use client";
 
 // app/store/[slug]/page.tsx
-import { useEffect, useState, useCallback, use } from "react";
+import { useEffect, useState, useCallback, useRef, use } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -19,7 +19,7 @@ interface Paper {
 }
 
 interface StoreData {
-  teacher: { name: string; businessName: string | null };
+  teacher: { name: string; businessName: string | null; whatsappNumber: string | null };
   papers: Paper[];
 }
 
@@ -113,7 +113,7 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
             <StyledShopName name={shopName} />
           </h1>
         </div>
-        <p className="text-white/70 text-sm mt-2">Exam papers &amp; revision materials</p>
+        <p className="text-white/70 text-sm mt-2">Exam papers and revision materials</p>
       </header>
 
       <div className="max-w-5xl mx-auto px-4 py-6 flex flex-wrap gap-3">
@@ -185,6 +185,7 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
           paper={orderPaper}
           onClose={() => setOrderPaper(null)}
           teacherName={shopName}
+          whatsappNumber={data.teacher.whatsappNumber}
         />
       )}
     </div>
@@ -218,19 +219,68 @@ function FilterSelect({
   );
 }
 
+type OrderStage = "form" | "sending" | "awaiting_payment" | "paid" | "failed";
+
+const POLL_INTERVAL_MS = 3000;
+const MAX_POLL_ATTEMPTS = 40; // ~2 minutes
+
 function OrderModal({
   paper,
   onClose,
   teacherName,
+  whatsappNumber,
 }: {
   paper: Paper;
   onClose: () => void;
   teacherName: string;
+  whatsappNumber: string | null;
 }) {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [stage, setStage] = useState<OrderStage>("form");
   const [error, setError] = useState<string | null>(null);
+  const [purchaseId, setPurchaseId] = useState<string | null>(null);
+  const [downloadToken, setDownloadToken] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollAttempts = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      if (pollTimer.current) clearInterval(pollTimer.current);
+    };
+  }, []);
+
+  const startPolling = (id: string) => {
+    pollAttempts.current = 0;
+    pollTimer.current = setInterval(async () => {
+      pollAttempts.current += 1;
+
+      try {
+        const res = await fetch(`${API_URL}/papers/purchases/${id}/status`);
+        const json = await res.json();
+
+        if (json.status === "paid") {
+          if (pollTimer.current) clearInterval(pollTimer.current);
+          setDownloadToken(json.download_token);
+          setStage("paid");
+        } else if (json.status === "failed") {
+          if (pollTimer.current) clearInterval(pollTimer.current);
+          setStage("failed");
+          setError("Payment was not completed.");
+        }
+      } catch {
+        // transient network error - just try again next tick
+      }
+
+      if (pollAttempts.current >= MAX_POLL_ATTEMPTS) {
+        if (pollTimer.current) clearInterval(pollTimer.current);
+        setStage("failed");
+        setError("We have not heard back from M-Pesa yet. Check your phone, or try again.");
+      }
+    }, POLL_INTERVAL_MS);
+  };
 
   const handlePay = async () => {
     if (!phone.trim()) {
@@ -238,23 +288,43 @@ function OrderModal({
       return;
     }
     setError(null);
-    setStatus("sending");
+    setStage("sending");
     try {
       const res = await fetch(`${API_URL}/papers/${paper.id}/purchase`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phoneNumber: phone, email: email || "no-reply@example.com" }),
       });
-      const data = await res.json();
+      const json = await res.json();
       if (!res.ok) {
-        setStatus("error");
-        setError(data.error ?? "Could not start payment.");
+        setStage("form");
+        setError(json.error ?? "Could not start payment.");
         return;
       }
-      setStatus("sent");
+      setPurchaseId(json.purchaseId);
+      setStage("awaiting_payment");
+      startPolling(json.purchaseId);
     } catch {
-      setStatus("error");
+      setStage("form");
       setError("Network error. Try again.");
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!purchaseId || !downloadToken) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(
+        `${API_URL}/papers/purchases/${purchaseId}/download?token=${downloadToken}`
+      );
+      const json = await res.json();
+      if (!res.ok) {
+        setError(json.error ?? "Could not get download link.");
+        return;
+      }
+      window.open(json.url, "_blank");
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -276,11 +346,28 @@ function OrderModal({
         <h3 className="font-display text-lg text-[#16233D] mb-1">{paper.title}</h3>
         <p className="text-[#0F6E5C] font-medium mb-4">KES {paper.price}</p>
 
-        {status === "sent" ? (
-          <p className="text-sm text-[#0F6E5C] bg-[#0F6E5C]/10 rounded-lg px-3 py-2">
-            Check your phone to complete the M-Pesa payment.
+        {stage === "paid" && (
+          <div>
+            <p className="text-sm text-[#0F6E5C] bg-[#0F6E5C]/10 rounded-lg px-3 py-2 mb-3">
+              Payment confirmed.
+            </p>
+            <button
+              onClick={handleDownload}
+              disabled={downloading}
+              className="w-full bg-[#0F6E5C] text-white rounded-xl py-3 font-medium hover:opacity-90 disabled:opacity-60"
+            >
+              {downloading ? "Preparing download..." : "Download now"}
+            </button>
+          </div>
+        )}
+
+        {stage === "awaiting_payment" && (
+          <p className="text-sm text-[#6B7280] bg-black/5 rounded-lg px-3 py-2">
+            Check your phone to complete the M-Pesa payment. This page will update automatically.
           </p>
-        ) : (
+        )}
+
+        {(stage === "form" || stage === "sending" || stage === "failed") && (
           <>
             <label className="block mb-3">
               <span className="text-sm font-medium text-[#16233D] mb-1 block">
@@ -309,21 +396,25 @@ function OrderModal({
 
             <button
               onClick={handlePay}
-              disabled={status === "sending"}
+              disabled={stage === "sending"}
               className="w-full bg-[#1A56DB] text-white rounded-xl py-3 font-medium hover:bg-[#1543ad] disabled:opacity-60 mb-3"
             >
-              {status === "sending" ? "Sending..." : "Pay with M-Pesa"}
+              {stage === "sending" ? "Sending..." : "Pay with M-Pesa"}
             </button>
 
-            <p className="text-center text-xs text-[#6B7280] mb-3">or</p>
-            <a
-              href={`https://wa.me/254700000000?text=${whatsappMessage}`}
-              target="_blank"
-              rel="noreferrer"
-              className="block text-center w-full bg-[#0F6E5C] text-white rounded-xl py-3 font-medium hover:opacity-90"
-            >
-              Order via WhatsApp
-            </a>
+            {whatsappNumber && (
+              <>
+                <p className="text-center text-xs text-[#6B7280] mb-3">or</p>
+                
+                  href={`https://wa.me/${whatsappNumber}?text=${whatsappMessage}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block text-center w-full bg-[#0F6E5C] text-white rounded-xl py-3 font-medium hover:opacity-90"
+                >
+                  Order via WhatsApp
+                </a>
+              </>
+            )}
           </>
         )}
       </div>

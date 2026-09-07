@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { pool } from "../lib/db";
 import { initiateCollection } from "../lib/intasend";
+import { getPresignedDownloadUrl } from "../lib/r2";
 
 const router = Router();
 
@@ -35,19 +36,18 @@ router.post("/:paperId/purchase", async (req, res) => {
   try {
     const collectionResponse = await initiateCollection({
       phoneNumber,
-     amount: paper.price,
+      amount: paper.price,
       apiRef: `purchase-${purchaseId}`,
     });
 
     await pool.query(
       `UPDATE purchases SET checkout_request_id = $1 WHERE id = $2`,
-      [collectionResponse.invoice_id, purchaseId]
+      [collectionResponse.invoice.invoice_id, purchaseId]
     );
 
     return res.status(201).json({
       purchaseId,
       message: "Payment initiated. Complete it on your phone.",
-      checkoutUrl: collectionResponse.url ?? null,
     });
   } catch (err) {
     console.error("IntaSend collection failed:", err);
@@ -59,8 +59,7 @@ router.post("/:paperId/purchase", async (req, res) => {
   }
 });
 
-// Parent polls this after paying. Actual file delivery (R2 presigned
-// URL) is still missing - this returns purchase status only.
+// Parent polls this after paying, to know when the webhook has confirmed.
 router.get("/purchases/:purchaseId/status", async (req, res) => {
   const { rows } = await pool.query(
     `SELECT status, download_token, token_expires_at, token_used
@@ -72,6 +71,44 @@ router.get("/purchases/:purchaseId/status", async (req, res) => {
     return res.status(404).json({ error: "Purchase not found" });
   }
   return res.json(purchase);
+});
+
+// Actually retrieve the file, once paid. The download_token is the
+// one-time-use credential - anyone who has it can download once, so it
+// only ever gets handed to the browser after status is confirmed paid.
+router.get("/purchases/:purchaseId/download", async (req, res) => {
+  const { token } = req.query;
+
+  const { rows } = await pool.query(
+    `SELECT p.status, p.download_token, p.token_expires_at, p.token_used, pp.file_key
+     FROM purchases p
+     JOIN papers pp ON pp.id = p.paper_id
+     WHERE p.id = $1`,
+    [req.params.purchaseId]
+  );
+  const purchase = rows[0];
+
+  if (!purchase || purchase.status !== "paid") {
+    return res.status(404).json({ error: "Purchase not found or not yet paid" });
+  }
+  if (purchase.download_token !== token) {
+    return res.status(403).json({ error: "Invalid download link" });
+  }
+  if (purchase.token_used) {
+    return res.status(410).json({ error: "This download link has already been used" });
+  }
+  if (new Date(purchase.token_expires_at) < new Date()) {
+    return res.status(410).json({ error: "This download link has expired" });
+  }
+
+  try {
+    const url = await getPresignedDownloadUrl(purchase.file_key);
+    await pool.query(`UPDATE purchases SET token_used = true WHERE id = $1`, [req.params.purchaseId]);
+    return res.json({ url });
+  } catch (err) {
+    console.error("Failed to generate download URL:", err);
+    return res.status(502).json({ error: "Could not generate download link" });
+  }
 });
 
 export default router;
