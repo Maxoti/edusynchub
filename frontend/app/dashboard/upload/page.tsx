@@ -4,6 +4,7 @@
 import { useState, useEffect, useCallback, type FormEvent, type DragEvent } from "react";
 import { RequirePaid } from "@/components/RouteGuard";
 import { useAuth } from "@/context/AuthContext";
+import { WalletBalance } from "@/components/WalletBalance";
 import {
   getPresignedUploadUrl,
   uploadFileToR2,
@@ -96,6 +97,10 @@ function DashboardContent() {
           </button>
         </div>
       </header>
+
+      <div className="mb-8">
+        <WalletBalance />
+      </div>
 
       <UploadForm onUploaded={refreshExams} />
 
