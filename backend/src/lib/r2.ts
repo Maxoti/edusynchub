@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { randomBytes } from "crypto";
 
@@ -47,3 +47,28 @@ export async function getPresignedUploadUrl(
   return { uploadUrl, fileKey };
 }
 
+
+
+/**
+ * Generates a short-lived presigned GET URL so a teacher can view/download
+ * their own uploaded file directly from R2.
+ */
+export async function getPresignedDownloadUrl(fileKey: string): Promise<string> {
+  const command = new GetObjectCommand({
+    Bucket: R2_BUCKET_NAME,
+    Key: fileKey,
+  });
+
+  return getSignedUrl(s3, command, { expiresIn: 300 }); // 5 minutes
+}
+
+
+/**
+ * Best-effort delete of a file from R2. Callers should not fail the
+ * whole operation if this throws - the database row is the source of
+ * truth for what a teacher owns; an orphaned R2 object is cheap to
+ * clean up later and not worth blocking a delete over.
+ */
+export async function deleteR2Object(fileKey: string): Promise<void> {
+  await s3.send(new DeleteObjectCommand({ Bucket: R2_BUCKET_NAME, Key: fileKey }));
+}

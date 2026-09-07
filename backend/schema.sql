@@ -12,7 +12,8 @@ CREATE TABLE public.teachers (
     email character varying(255) NOT NULL UNIQUE,
     password_hash character varying(255) NOT NULL,
     name character varying(255) NOT NULL,
-    slug character varying(150) NOT NULL UNIQUE;
+    slug character varying(150) NOT NULL UNIQUE,
+    whatsapp_number character varying(15),
     business_name character varying(255),
     status character varying(20) NOT NULL DEFAULT 'active', -- active | suspended
     created_at timestamp without time zone DEFAULT now()

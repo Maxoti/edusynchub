@@ -5,7 +5,7 @@ const router = Router();
 
 router.get("/:slug", async (req, res) => {
   const teacherRow = await pool.query(
-    `SELECT id, name, business_name, slug FROM teachers WHERE slug = $1`,
+    `SELECT id, name, business_name, slug, whatsapp_number FROM teachers WHERE slug = $1`,
     [req.params.slug]
   );
   const teacher = teacherRow.rows[0];
@@ -26,6 +26,7 @@ router.get("/:slug", async (req, res) => {
     teacher: {
       name: teacher.name,
       businessName: teacher.business_name,
+      whatsappNumber: teacher.whatsapp_number,
     },
     papers: papersRow.rows.map((p) => ({
       id: String(p.id),

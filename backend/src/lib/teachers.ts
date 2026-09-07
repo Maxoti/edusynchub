@@ -6,6 +6,7 @@ export interface TeacherProfile {
   email: string;
   phone_number: string;
   business_name: string | null;
+  whatsapp_number: string | null;
   slug: string | null;
   onboardingPaid: boolean;
   subscriptionTier: string | null;
@@ -30,6 +31,7 @@ export async function getTeacherProfile(
        t.email,
        t.phone_number,
        t.business_name,
+       t.whatsapp_number,
        t.slug,
        EXISTS (
          SELECT 1 FROM subscriptions s
@@ -57,3 +59,25 @@ export async function getTeacherProfile(
   return profile;
 }
 
+const KENYAN_MOBILE_RE = /^(?:254|0)?7\d{8}$|^(?:254|0)?1\d{8}$/;
+
+// Normalizes to 07XXXXXXXX / 01XXXXXXXX for storage (matches phone_number's
+// existing convention in this codebase). Returns null if invalid.
+export function normalizeKenyanMobile(raw: string): string | null {
+  const digits = raw.replace(/\D/g, "");
+  const withoutCountryCode = digits.startsWith("254") ? `0${digits.slice(3)}` : digits;
+  const candidate = withoutCountryCode.startsWith("0")
+    ? withoutCountryCode
+    : `0${withoutCountryCode}`;
+  return KENYAN_MOBILE_RE.test(candidate) ? candidate : null;
+}
+
+export async function updateTeacherWhatsapp(
+  teacherId: number,
+  whatsappNumber: string | null
+): Promise<void> {
+  await pool.query(`UPDATE teachers SET whatsapp_number = $1 WHERE id = $2`, [
+    whatsappNumber,
+    teacherId,
+  ]);
+}

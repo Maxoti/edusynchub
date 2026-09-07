@@ -122,6 +122,7 @@ export interface Exam {
   price: number;
   isApproved: boolean;
   isBundle: boolean;
+  active: boolean;
   createdAt: string;
 }
 
@@ -142,6 +143,12 @@ export interface CreateExamPayload {
   fileKey: string;
   isBundle: boolean;
 }
+
+// Every field optional - send only what changed. Used both for real
+// metadata edits and for the active/inactive toggle (send just { active }).
+export type UpdateExamPayload = Partial<Omit<CreateExamPayload, "fileKey">> & {
+  active?: boolean;
+};
 
 // Step 1: ask the backend for a short-lived R2 presigned PUT URL.
 export const getPresignedUploadUrl = (fileName: string, fileType: string) =>
@@ -181,8 +188,8 @@ export function uploadFileToR2(
   });
 }
 
-// Step 3: save the metadata + file key. Backend should insert with
-// is_approved = false pending your manual review.
+// Step 3: save the metadata + file key. Papers are auto-approved on
+// upload - no manual review queue.
 export const createExam = (payload: CreateExamPayload) =>
   request<Exam>("/exams", {
     method: "POST",
@@ -190,3 +197,17 @@ export const createExam = (payload: CreateExamPayload) =>
   });
 
 export const listMyExams = () => request<Exam[]>("/exams/mine");
+
+// Edit metadata and/or toggle active/inactive. "Delete" in the UI means
+// calling this with { active: false } - papers are never hard-deleted
+// once purchases can reference them.
+export const updateExam = (id: string, payload: UpdateExamPayload) =>
+  request<Exam>(`/exams/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+
+// Short-lived presigned GET URL so a teacher can view their own
+// uploaded file.
+export const getFileUrl = (id: string) =>
+  request<{ url: string }>(`/exams/${id}/file-url`);

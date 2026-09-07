@@ -23,6 +23,35 @@ interface StoreData {
   papers: Paper[];
 }
 
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
+}
+
+function ShopAvatar({ name }: { name: string }) {
+  return (
+    <div className="w-16 h-16 rounded-full bg-[#C9972D] text-white flex items-center justify-center font-display text-xl border-2 border-white/30">
+      {getInitials(name)}
+    </div>
+  );
+}
+
+function StyledShopName({ name }: { name: string }) {
+  const parts = name.trim().split(/\s+/);
+  const firstName = parts[0];
+  const rest = parts.slice(1).join(" ");
+  return (
+    <span className="inline-flex items-center gap-2 flex-wrap justify-center">
+      <span>{firstName}</span>
+      {rest && (
+        <span className="inline-block bg-[#C9972D] text-[#16233D] rounded-full px-4 py-1 text-2xl">
+          {rest}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function StorePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const [data, setData] = useState<StoreData | null>(null);
@@ -54,11 +83,14 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
   }, [slug]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 
   if (loading) return <p className="text-center py-20 text-[#6B7280]">Loading shop...</p>;
   if (notFound || !data) return <p className="text-center py-20 text-[#6B7280]">Shop not found.</p>;
+
+  const shopName = data.teacher.businessName || data.teacher.name;
 
   const filterOptions = (key: keyof Paper) =>
     Array.from(new Set(data.papers.map((p) => p[key]).filter(Boolean))) as string[];
@@ -75,9 +107,12 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
   return (
     <div className="min-h-screen bg-[#F9FAFB]">
       <header className="bg-[#1A56DB] text-white text-center py-10 px-4">
-        <h1 className="font-display text-3xl">
-          {data.teacher.businessName || data.teacher.name}
-        </h1>
+        <div className="flex flex-col items-center gap-3">
+          <ShopAvatar name={shopName} />
+          <h1 className="font-display text-3xl">
+            <StyledShopName name={shopName} />
+          </h1>
+        </div>
         <p className="text-white/70 text-sm mt-2">Exam papers &amp; revision materials</p>
       </header>
 
@@ -124,7 +159,7 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
             <div key={paper.id} className="bg-white rounded-xl border border-black/5 p-4 flex flex-col">
               <div className="flex justify-between items-start mb-2">
                 <span className="text-xs text-[#6B7280]">
-                  {paper.curriculum} · {paper.year}
+                  {paper.curriculum} - {paper.year}
                 </span>
                 <span className="text-xs font-medium bg-[#0F6E5C]/10 text-[#0F6E5C] rounded-full px-2.5 py-1">
                   KES {paper.price}
@@ -132,7 +167,7 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
               </div>
               <h3 className="font-medium text-[#16233D] mb-1">{paper.title}</h3>
               <p className="text-xs text-[#6B7280] mb-4">
-                {[paper.examType, paper.term, paper.subject].filter(Boolean).join(" · ")}
+                {[paper.examType, paper.term, paper.subject].filter(Boolean).join(" - ")}
               </p>
               <button
                 onClick={() => setOrderPaper(paper)}
@@ -149,7 +184,7 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
         <OrderModal
           paper={orderPaper}
           onClose={() => setOrderPaper(null)}
-          teacherName={data.teacher.businessName || data.teacher.name}
+          teacherName={shopName}
         />
       )}
     </div>
@@ -224,7 +259,7 @@ function OrderModal({
   };
 
   const whatsappMessage = encodeURIComponent(
-    `Hi ${teacherName}, I'd like to order "${paper.title}" (KES ${paper.price}).`
+    `Hi ${teacherName}, I would like to order "${paper.title}" (KES ${paper.price}).`
   );
 
   return (
@@ -281,7 +316,6 @@ function OrderModal({
             </button>
 
             <p className="text-center text-xs text-[#6B7280] mb-3">or</p>
-
             <a
               href={`https://wa.me/254700000000?text=${whatsappMessage}`}
               target="_blank"

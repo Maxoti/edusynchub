@@ -3,7 +3,11 @@ import bcrypt from "bcrypt";
 import { pool } from "../lib/db";
 import { signTeacherToken } from "../lib/jwt";
 import { requireAuth, AuthedRequest } from "../middleware/auth";
-import { getTeacherProfile } from "../lib/teachers";
+import {
+  getTeacherProfile,
+  normalizeKenyanMobile,
+  updateTeacherWhatsapp,
+} from "../lib/teachers";
 import { generateUniqueSlug } from "../lib/slug";
 
 const router = Router();
@@ -115,5 +119,30 @@ router.get("/me", requireAuth, async (req: AuthedRequest, res) => {
   return res.json({ teacher });
 });
 
-export default router;
+router.patch("/me", requireAuth, async (req: AuthedRequest, res) => {
+  const { whatsappNumber } = req.body ?? {};
 
+  if (whatsappNumber === undefined) {
+    return res.status(400).json({ error: "whatsappNumber is required" });
+  }
+
+  // Allow explicitly clearing the number with null/"".
+  if (whatsappNumber === null || whatsappNumber === "") {
+    await updateTeacherWhatsapp(req.teacherId!, null);
+    const teacher = await getTeacherProfile(req.teacherId!);
+    return res.json({ teacher });
+  }
+
+  const normalized = normalizeKenyanMobile(String(whatsappNumber));
+  if (!normalized) {
+    return res.status(400).json({
+      error: "Enter a valid Kenyan mobile number, e.g. 0712345678",
+    });
+  }
+
+  await updateTeacherWhatsapp(req.teacherId!, normalized);
+  const teacher = await getTeacherProfile(req.teacherId!);
+  return res.json({ teacher });
+});
+
+export default router;
