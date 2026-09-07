@@ -23,6 +23,11 @@ interface StoreData {
   papers: Paper[];
 }
 
+interface CompletedPurchase {
+  purchaseId: string;
+  downloadToken: string;
+}
+
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/);
   return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
@@ -68,6 +73,11 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
 
   const [orderPaper, setOrderPaper] = useState<Paper | null>(null);
 
+  // Once a paper's payment completes, its entry lives here - the card
+  // itself becomes the download button, the modal has already closed.
+  const [completedPurchases, setCompletedPurchases] = useState<Record<string, CompletedPurchase>>({});
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     try {
       const res = await fetch(`${API_URL}/store/${slug}`);
@@ -86,6 +96,25 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
+
+  const handlePaid = (paperId: string, purchaseId: string, downloadToken: string) => {
+    setCompletedPurchases((prev) => ({ ...prev, [paperId]: { purchaseId, downloadToken } }));
+  };
+
+  const handleDownload = async (paperId: string) => {
+    const completed = completedPurchases[paperId];
+    if (!completed) return;
+    setDownloadingId(paperId);
+    try {
+      const res = await fetch(
+        `${API_URL}/papers/purchases/${completed.purchaseId}/download?token=${completed.downloadToken}`
+      );
+      const json = await res.json();
+      if (res.ok) window.open(json.url, "_blank");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   if (loading) return <p className="text-center py-20 text-[#6B7280]">Loading shop...</p>;
   if (notFound || !data) return <p className="text-center py-20 text-[#6B7280]">Shop not found.</p>;
@@ -155,28 +184,42 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
             No papers match those filters yet.
           </p>
         ) : (
-          filtered.map((paper) => (
-            <div key={paper.id} className="bg-white rounded-xl border border-black/5 p-4 flex flex-col">
-              <div className="flex justify-between items-start mb-2">
-                <span className="text-xs text-[#6B7280]">
-                  {paper.curriculum} - {paper.year}
-                </span>
-                <span className="text-xs font-medium bg-[#0F6E5C]/10 text-[#0F6E5C] rounded-full px-2.5 py-1">
-                  KES {paper.price}
-                </span>
+          filtered.map((paper) => {
+            const completed = completedPurchases[paper.id];
+            return (
+              <div key={paper.id} className="bg-white rounded-xl border border-black/5 p-4 flex flex-col">
+                <div className="flex justify-between items-start mb-2">
+                  <span className="text-xs text-[#6B7280]">
+                    {paper.curriculum} - {paper.year}
+                  </span>
+                  <span className="text-xs font-medium bg-[#0F6E5C]/10 text-[#0F6E5C] rounded-full px-2.5 py-1">
+                    KES {paper.price}
+                  </span>
+                </div>
+                <h3 className="font-medium text-[#16233D] mb-1">{paper.title}</h3>
+                <p className="text-xs text-[#6B7280] mb-4">
+                  {[paper.examType, paper.term, paper.subject].filter(Boolean).join(" - ")}
+                </p>
+
+                {completed ? (
+                  <button
+                    onClick={() => handleDownload(paper.id)}
+                    disabled={downloadingId === paper.id}
+                    className="mt-auto w-full bg-[#0F6E5C] text-white rounded-lg py-2.5 text-sm font-medium hover:opacity-90 disabled:opacity-60"
+                  >
+                    {downloadingId === paper.id ? "Preparing..." : "Download"}
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setOrderPaper(paper)}
+                    className="mt-auto w-full bg-[#1A56DB] text-white rounded-lg py-2.5 text-sm font-medium hover:bg-[#1543ad]"
+                  >
+                    {paper.isBundle ? "Buy Full Set" : "Buy & Download"}
+                  </button>
+                )}
               </div>
-              <h3 className="font-medium text-[#16233D] mb-1">{paper.title}</h3>
-              <p className="text-xs text-[#6B7280] mb-4">
-                {[paper.examType, paper.term, paper.subject].filter(Boolean).join(" - ")}
-              </p>
-              <button
-                onClick={() => setOrderPaper(paper)}
-                className="mt-auto w-full bg-[#1A56DB] text-white rounded-lg py-2.5 text-sm font-medium hover:bg-[#1543ad]"
-              >
-                {paper.isBundle ? "Buy Full Set" : "Buy & Download"}
-              </button>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -184,6 +227,7 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
         <OrderModal
           paper={orderPaper}
           onClose={() => setOrderPaper(null)}
+          onPaid={handlePaid}
           teacherName={shopName}
           whatsappNumber={data.teacher.whatsappNumber}
         />
@@ -219,7 +263,7 @@ function FilterSelect({
   );
 }
 
-type OrderStage = "form" | "sending" | "awaiting_payment" | "paid" | "failed";
+type OrderStage = "form" | "sending" | "awaiting_payment" | "failed";
 
 const POLL_INTERVAL_MS = 3000;
 const MAX_POLL_ATTEMPTS = 40; // ~2 minutes
@@ -227,11 +271,13 @@ const MAX_POLL_ATTEMPTS = 40; // ~2 minutes
 function OrderModal({
   paper,
   onClose,
+  onPaid,
   teacherName,
   whatsappNumber,
 }: {
   paper: Paper;
   onClose: () => void;
+  onPaid: (paperId: string, purchaseId: string, downloadToken: string) => void;
   teacherName: string;
   whatsappNumber: string | null;
 }) {
@@ -239,9 +285,6 @@ function OrderModal({
   const [email, setEmail] = useState("");
   const [stage, setStage] = useState<OrderStage>("form");
   const [error, setError] = useState<string | null>(null);
-  const [purchaseId, setPurchaseId] = useState<string | null>(null);
-  const [downloadToken, setDownloadToken] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState(false);
 
   const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollAttempts = useRef(0);
@@ -252,20 +295,22 @@ function OrderModal({
     };
   }, []);
 
-  const startPolling = (id: string) => {
+  const startPolling = (purchaseId: string) => {
     pollAttempts.current = 0;
     pollTimer.current = setInterval(async () => {
       pollAttempts.current += 1;
 
       try {
-        const res = await fetch(`${API_URL}/papers/purchases/${id}/status`);
+        const res = await fetch(`${API_URL}/papers/purchases/${purchaseId}/status`);
         const json = await res.json();
 
         if (json.status === "paid") {
           if (pollTimer.current) clearInterval(pollTimer.current);
-          setDownloadToken(json.download_token);
-          setStage("paid");
-        } else if (json.status === "failed") {
+          onPaid(paper.id, purchaseId, json.download_token);
+          onClose(); // auto-close the moment payment is confirmed
+          return;
+        }
+        if (json.status === "failed") {
           if (pollTimer.current) clearInterval(pollTimer.current);
           setStage("failed");
           setError("Payment was not completed.");
@@ -301,30 +346,11 @@ function OrderModal({
         setError(json.error ?? "Could not start payment.");
         return;
       }
-      setPurchaseId(json.purchaseId);
       setStage("awaiting_payment");
       startPolling(json.purchaseId);
     } catch {
       setStage("form");
       setError("Network error. Try again.");
-    }
-  };
-
-  const handleDownload = async () => {
-    if (!purchaseId || !downloadToken) return;
-    setDownloading(true);
-    try {
-      const res = await fetch(
-        `${API_URL}/papers/purchases/${purchaseId}/download?token=${downloadToken}`
-      );
-      const json = await res.json();
-      if (!res.ok) {
-        setError(json.error ?? "Could not get download link.");
-        return;
-      }
-      window.open(json.url, "_blank");
-    } finally {
-      setDownloading(false);
     }
   };
 
@@ -346,24 +372,9 @@ function OrderModal({
         <h3 className="font-display text-lg text-[#16233D] mb-1">{paper.title}</h3>
         <p className="text-[#0F6E5C] font-medium mb-4">KES {paper.price}</p>
 
-        {stage === "paid" && (
-          <div>
-            <p className="text-sm text-[#0F6E5C] bg-[#0F6E5C]/10 rounded-lg px-3 py-2 mb-3">
-              Payment confirmed.
-            </p>
-            <button
-              onClick={handleDownload}
-              disabled={downloading}
-              className="w-full bg-[#0F6E5C] text-white rounded-xl py-3 font-medium hover:opacity-90 disabled:opacity-60"
-            >
-              {downloading ? "Preparing download..." : "Download now"}
-            </button>
-          </div>
-        )}
-
         {stage === "awaiting_payment" && (
           <p className="text-sm text-[#6B7280] bg-black/5 rounded-lg px-3 py-2">
-            Check your phone to complete the M-Pesa payment. This page will update automatically.
+            Check your phone to complete the M-Pesa payment. This closes automatically once confirmed.
           </p>
         )}
 
@@ -405,7 +416,7 @@ function OrderModal({
             {whatsappNumber && (
               <>
                 <p className="text-center text-xs text-[#6B7280] mb-3">or</p>
-                
+                <a
                   href={`https://wa.me/${whatsappNumber}?text=${whatsappMessage}`}
                   target="_blank"
                   rel="noreferrer"
