@@ -31,7 +31,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(body.message ?? "Request failed", res.status);
+    // Backend routes return { error: "..." }, not { message: "..." } —
+    // check both so real backend error text actually reaches the UI
+    // instead of always falling back to the generic default.
+    throw new ApiError(body.message ?? body.error ?? "Request failed", res.status);
   }
 
   if (res.status === 204) return undefined as T;
@@ -106,7 +109,6 @@ export type ExamType =
   | "Mid-Term Exams"
   | "End-Term Exams"
   | "Mock Exams"
-  |"Mock Exams"
   | "Schemes of Work"
   | "Lesson Notes";
 
@@ -211,3 +213,21 @@ export const updateExam = (id: string, payload: UpdateExamPayload) =>
 // uploaded file.
 export const getFileUrl = (id: string) =>
   request<{ url: string }>(`/exams/${id}/file-url`);
+
+// ---- Wallet endpoints ----
+
+export interface WalletData {
+  availableBalance: number;
+  minWithdrawal: number;
+  canWithdraw: boolean;
+}
+
+export interface WithdrawResponse {
+  message: string;
+  payoutId: number;
+}
+
+export const getWalletBalance = () => request<WalletData>("/wallet/balance");
+
+export const requestWithdrawal = () =>
+  request<WithdrawResponse>("/wallet/withdraw", { method: "POST" });
