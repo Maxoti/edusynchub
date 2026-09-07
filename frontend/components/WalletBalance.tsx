@@ -25,9 +25,6 @@ export function WalletBalance() {
   }, []);
 
   useEffect(() => {
-    // Standard fetch-on-mount pattern - setWallet happens after the await,
-    // not synchronously during the effect's own execution, so this doesn't
-    // cause the cascading-render issue the rule is meant to catch.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadBalance();
   }, [loadBalance]);
@@ -45,7 +42,7 @@ export function WalletBalance() {
       if (!res.ok) {
         setMessage(data.error ?? "Withdrawal failed");
       } else {
-        setMessage("Withdrawal initiated - check your phone.");
+        setMessage("Withdrawal initiated — check your phone.");
         await loadBalance();
       }
     } finally {
@@ -53,29 +50,52 @@ export function WalletBalance() {
     }
   }
 
-  if (!wallet) return <p>Loading balance...</p>;
+  if (!wallet) {
+    return (
+      <div className="bg-white rounded-2xl border border-black/5 p-6">
+        <p className="text-sm text-[#6B7280]">Loading balance...</p>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ border: "1px solid #E5E7EB", borderRadius: 12, padding: 16 }}>
-      <p style={{ fontSize: 13, color: "#6B7280", margin: 0 }}>Available balance</p>
-      <p style={{ fontSize: 28, fontWeight: 500, margin: "4px 0 12px" }}>
+    <div className="bg-white rounded-2xl border border-black/5 p-6">
+      <p className="text-xs tracking-wide uppercase text-[#6B7280] mb-1">
+        Available balance
+      </p>
+      <p className="font-display text-3xl text-[#16233D] mb-4">
         KES {wallet.availableBalance}
       </p>
 
       <button
         onClick={handleWithdraw}
         disabled={!wallet.canWithdraw || withdrawing}
-        style={{ width: "100%" }}
+        className="w-full bg-[#1A56DB] text-white rounded-xl py-3 font-medium hover:bg-[#1543ad] disabled:opacity-40 disabled:cursor-not-allowed"
+        style={{
+          width: "100%",
+          backgroundColor: "#1A56DB",
+          color: "#FFFFFF",
+          borderRadius: "12px",
+          padding: "12px 0",
+          fontWeight: 500,
+          border: "none",
+          opacity: !wallet.canWithdraw || withdrawing ? 0.4 : 1,
+          cursor: !wallet.canWithdraw || withdrawing ? "not-allowed" : "pointer",
+        }}
       >
         {withdrawing ? "Processing..." : "Withdraw"}
       </button>
 
       {!wallet.canWithdraw && (
-        <p style={{ fontSize: 12, color: "#6B7280", marginTop: 8 }}>
-          Minimum withdrawal is KES {wallet.minWithdrawal}.
+        <p className="text-xs text-[#6B7280] mt-3">
+          Minimum withdrawal is KES {wallet.minWithdrawal}. Keep selling to unlock a payout.
         </p>
       )}
-      {message && <p style={{ fontSize: 13, marginTop: 8 }}>{message}</p>}
+      {message && (
+        <p className="text-sm text-[#16233D] bg-[#F9FAFB] rounded-lg px-3 py-2 mt-3">
+          {message}
+        </p>
+      )}
     </div>
   );
 }
