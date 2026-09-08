@@ -12,7 +12,7 @@ router.get("/balance", requireAuth, async (req: AuthedRequest, res) => {
     `SELECT available_balance FROM teacher_balances WHERE teacher_id = $1`,
     [req.teacherId]
   );
-  const availableBalance = rows[0]?.available_balance ?? 0;
+  const availableBalance = Number(rows[0]?.available_balance ?? 0);
 
   return res.json({
     availableBalance,
