@@ -5,10 +5,7 @@ import { requireAuth, AuthedRequest } from "../middleware/auth";
 
 const router = Router();
 
-// Configurable so you can lower it for demos without a code deploy -
-// just change MIN_WITHDRAWAL_KES in Render's Environment tab and
-// restart. Defaults to 200 (real production floor) if unset.
-const MIN_WITHDRAWAL_KES = Number(process.env.MIN_WITHDRAWAL_KES ?? 200);
+const MIN_WITHDRAWAL_KES = 200;
 
 router.get("/balance", requireAuth, async (req: AuthedRequest, res) => {
   const { rows } = await pool.query(
@@ -74,6 +71,15 @@ router.post("/withdraw", requireAuth, async (req: AuthedRequest, res) => {
     await client.query("COMMIT");
 
     try {
+      // TEMP DEBUG: log exactly what we're sending to IntaSend, so if
+      // this throws we know whether it's our own data (bad phone format,
+      // etc.) or IntaSend's API rejecting a well-formed request.
+      console.error("[wallet/withdraw] calling initiatePayout with:", {
+        teacherName: teacher.name,
+        phoneNumber: teacher.pochi_number,
+        amount: availableBalance,
+      });
+
       const payoutResponse = await initiatePayout({
         teacherName: teacher.name,
         phoneNumber: teacher.pochi_number,
@@ -88,12 +94,26 @@ router.post("/withdraw", requireAuth, async (req: AuthedRequest, res) => {
 
       return res.json({ message: "Withdrawal initiated", payoutId });
     } catch (err) {
+      // TEMP DEBUG: log the full error object, not just String(err),
+      // since Error.message alone can hide nested API response detail.
       console.error("IntaSend payout call failed:", err);
+      console.error(
+        "[wallet/withdraw] full error detail:",
+        JSON.stringify(err, Object.getOwnPropertyNames(err as object))
+      );
+
       await pool.query(
         `UPDATE payouts SET status = 'failed', failure_reason = $1 WHERE id = $2`,
         [String(err), payoutId]
       );
-      return res.status(502).json({ error: "Could not initiate payout" });
+
+      // TEMP DEBUG — reveals the real IntaSend/normalization error to the
+      // client so we can diagnose without relying on log visibility.
+      // Revert the `debug` field once the root cause is confirmed.
+      return res.status(502).json({
+        error: "Could not initiate payout",
+        debug: err instanceof Error ? err.message : String(err),
+      });
     }
   } catch (err) {
     await client.query("ROLLBACK");
@@ -144,7 +164,7 @@ router.post("/webhooks/intasend-payout", async (req, res) => {
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error("Payout webhook handling failed:", err);
+    console.error("Failed to process payout webhook:", err);
   } finally {
     client.release();
   }
