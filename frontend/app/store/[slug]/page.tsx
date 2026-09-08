@@ -2,6 +2,7 @@
 
 // app/store/[slug]/page.tsx
 import { useEffect, useState, useCallback, useRef, use } from "react";
+import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -135,7 +136,10 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
 
   return (
     <div className="min-h-screen bg-[#F9FAFB]">
-      <header className="bg-[#1A56DB] text-white text-center py-10 px-4">
+      <header className="bg-[#1A56DB] text-white text-center py-10 px-4 relative">
+        <Link href="/dashboard/upload" className="absolute top-4 left-4 text-sm text-white/80 hover:text-white">
+          &larr; Back to dashboard
+        </Link>
         <div className="flex flex-col items-center gap-3">
           <ShopAvatar name={shopName} />
           <h1 className="font-display text-3xl">
