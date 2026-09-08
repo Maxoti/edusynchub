@@ -5,7 +5,10 @@ import { requireAuth, AuthedRequest } from "../middleware/auth";
 
 const router = Router();
 
-const MIN_WITHDRAWAL_KES = 200;
+// Configurable so you can lower it for demos without a code deploy -
+// just change MIN_WITHDRAWAL_KES in Render's Environment tab and
+// restart. Defaults to 200 (real production floor) if unset.
+const MIN_WITHDRAWAL_KES = Number(process.env.MIN_WITHDRAWAL_KES ?? 200);
 
 router.get("/balance", requireAuth, async (req: AuthedRequest, res) => {
   const { rows } = await pool.query(
