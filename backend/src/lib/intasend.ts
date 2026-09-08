@@ -99,7 +99,7 @@ export async function initiatePayout(
       {
         name: teacherName,
         account,
-        amount: amount.toFixed(2),
+        amount,
         narrative,
       },
     ],
