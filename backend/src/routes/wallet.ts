@@ -5,7 +5,7 @@ import { requireAuth, AuthedRequest } from "../middleware/auth";
 
 const router = Router();
 
-const MIN_WITHDRAWAL_KES = 200;
+const MIN_WITHDRAWAL_KES = 20;
 
 router.get("/balance", requireAuth, async (req: AuthedRequest, res) => {
   const { rows } = await pool.query(
