@@ -10,6 +10,7 @@ import webhooksRouter from "./routes/webhooks";
 import uploadsRouter from "./routes/uploads";
 import examsRouter from "./routes/exams";
 import storeRouter from "./routes/store";
+import adminRouter from "./routes/admin";
 
 const app = express();
 
@@ -25,6 +26,7 @@ app.use("/webhooks", webhooksRouter);
 app.use("/uploads", uploadsRouter);
 app.use("/exams", examsRouter);
 app.use("/store", storeRouter);
+app.use("/admin", adminRouter);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
