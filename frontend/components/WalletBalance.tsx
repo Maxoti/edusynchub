@@ -91,7 +91,7 @@ export function WalletBalance() {
         <button
           onClick={handleWithdraw}
           disabled={!wallet.canWithdraw || withdrawing}
-          style={{ whiteSpace: "nowrap", padding: "0 16px" }}
+          style={{ whiteSpace: "nowrap", padding: "0 16px", height: 40, backgroundColor: "#1A56DB", color: "#fff", border: "none", borderRadius: 8, fontWeight: 500, cursor: "pointer", opacity: (!wallet.canWithdraw || withdrawing) ? 0.6 : 1 }}
         >
           {withdrawing ? "Processing..." : "Withdraw"}
         </button>
@@ -106,3 +106,4 @@ export function WalletBalance() {
     </div>
   );
 }
+
