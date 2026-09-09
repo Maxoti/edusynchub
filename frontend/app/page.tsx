@@ -80,7 +80,7 @@ export default function LandingPage() {
             <Step
               number="2"
               title="Upload your papers"
-              description="Add your revision materials, exams, and schemes of work. A one-time KES 299 unlocks unlimited uploads."
+              description="Add your revision materials, exams, and schemes of work."
             />
             <Step
               number="3"
