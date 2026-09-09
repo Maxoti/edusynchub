@@ -5,7 +5,7 @@ import { requireAuth, AuthedRequest } from "../middleware/auth";
 
 const router = Router();
 
-const MIN_WITHDRAWAL_KES = 20;
+const MIN_WITHDRAWAL_KES = Number(process.env.MIN_WITHDRAWAL_KES ?? 200);
 
 router.get("/balance", requireAuth, async (req: AuthedRequest, res) => {
   const { rows } = await pool.query(
@@ -22,6 +22,12 @@ router.get("/balance", requireAuth, async (req: AuthedRequest, res) => {
 });
 
 router.post("/withdraw", requireAuth, async (req: AuthedRequest, res) => {
+  const requestedAmount = Number(req.body?.amount);
+
+  if (!requestedAmount || requestedAmount <= 0) {
+    return res.status(400).json({ error: "Enter a valid withdrawal amount." });
+  }
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -51,12 +57,18 @@ router.post("/withdraw", requireAuth, async (req: AuthedRequest, res) => {
       `SELECT available_balance FROM teacher_balances WHERE teacher_id = $1`,
       [teacher.id]
     );
-    const availableBalance = balanceRow.rows[0]?.available_balance ?? 0;
+    const availableBalance = Number(balanceRow.rows[0]?.available_balance ?? 0);
 
-    if (availableBalance < MIN_WITHDRAWAL_KES) {
+    if (requestedAmount < MIN_WITHDRAWAL_KES) {
       await client.query("ROLLBACK");
       return res.status(400).json({
-        error: `Minimum withdrawal is KES ${MIN_WITHDRAWAL_KES}. Current balance: KES ${availableBalance}`,
+        error: `Minimum withdrawal is KES ${MIN_WITHDRAWAL_KES}.`,
+      });
+    }
+    if (requestedAmount > availableBalance) {
+      await client.query("ROLLBACK");
+      return res.status(400).json({
+        error: `You only have KES ${availableBalance} available.`,
       });
     }
 
@@ -64,26 +76,17 @@ router.post("/withdraw", requireAuth, async (req: AuthedRequest, res) => {
       `INSERT INTO payouts (teacher_id, amount, status)
        VALUES ($1, $2, 'processing')
        RETURNING id`,
-      [teacher.id, availableBalance]
+      [teacher.id, requestedAmount]
     );
     const payoutId = payoutRow.rows[0].id;
 
     await client.query("COMMIT");
 
     try {
-      // TEMP DEBUG: log exactly what we're sending to IntaSend, so if
-      // this throws we know whether it's our own data (bad phone format,
-      // etc.) or IntaSend's API rejecting a well-formed request.
-      console.error("[wallet/withdraw] calling initiatePayout with:", {
-        teacherName: teacher.name,
-        phoneNumber: teacher.pochi_number,
-        amount: availableBalance,
-      });
-
       const payoutResponse = await initiatePayout({
         teacherName: teacher.name,
         phoneNumber: teacher.pochi_number,
-        amount: availableBalance,
+        amount: requestedAmount,
         narrative: "EdusyncHub payout",
       });
 
@@ -94,25 +97,13 @@ router.post("/withdraw", requireAuth, async (req: AuthedRequest, res) => {
 
       return res.json({ message: "Withdrawal initiated", payoutId });
     } catch (err) {
-      // TEMP DEBUG: log the full error object, not just String(err),
-      // since Error.message alone can hide nested API response detail.
       console.error("IntaSend payout call failed:", err);
-      console.error(
-        "[wallet/withdraw] full error detail:",
-        JSON.stringify(err, Object.getOwnPropertyNames(err as object))
-      );
-
       await pool.query(
         `UPDATE payouts SET status = 'failed', failure_reason = $1 WHERE id = $2`,
         [String(err), payoutId]
       );
-
-      // TEMP DEBUG — reveals the real IntaSend/normalization error to the
-      // client so we can diagnose without relying on log visibility.
-      // Revert the `debug` field once the root cause is confirmed.
       return res.status(502).json({
-        error: "Could not initiate payout",
-        debug: err instanceof Error ? err.message : String(err),
+        error: err instanceof Error ? err.message : "Could not initiate payout",
       });
     }
   } catch (err) {
@@ -164,7 +155,7 @@ router.post("/webhooks/intasend-payout", async (req, res) => {
     await client.query("COMMIT");
   } catch (err) {
     await client.query("ROLLBACK");
-    console.error("Failed to process payout webhook:", err);
+    console.error("Payout webhook handling failed:", err);
   } finally {
     client.release();
   }
