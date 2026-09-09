@@ -94,7 +94,6 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
   }, [slug]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 

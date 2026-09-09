@@ -198,7 +198,7 @@ function DashboardMockup() {
         <div className="h-6 w-64 rounded bg-white/10 mb-6" />
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-32 rounded-xl bg-white/[0.06] border border-white/10" />
+            <div key={i} className="h-32 rounded-xl bg-white/6 border border-white/10" />
           ))}
         </div>
       </div>

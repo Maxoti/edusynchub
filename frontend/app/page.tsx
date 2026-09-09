@@ -32,7 +32,7 @@ export default function LandingPage() {
           </h1>
           <p className="text-lg text-[#6B7280] mt-6 leading-relaxed">
             Upload the exam papers you already write. Parents across Kenya pay
-            KES 50–100 to download them via M-Pesa. You keep 70% — paid
+            KES 50–100 to download them via M-Pesa. You keep 85.5% — paid
             straight to your phone, every time.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-4">
@@ -48,8 +48,8 @@ export default function LandingPage() {
           </div>
 
           <div className="mt-10 grid grid-cols-3 gap-6 max-w-md">
-            <Stat value="70%" label="You keep per sale" />
-            <Stat value="KES 499" label="monthly_activation" />
+            <Stat value="85.5%" label="You keep per sale" />
+            <Stat value="KES 299" label="Monthly activation" />
           </div>
         </div>
 
@@ -85,7 +85,7 @@ export default function LandingPage() {
             <Step
               number="3"
               title="Get paid on M-Pesa"
-              description="Share your link. When a parent buys a paper, your 70% lands in your wallet — withdraw anytime."
+              description="Share your link. When a parent buys a paper, your 85.5% lands in your wallet — withdraw anytime."
             />
           </div>
         </div>

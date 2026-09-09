@@ -73,7 +73,7 @@ async function handleCollectionEvent(body: any, res: any) {
     );
     const { teacher_id, price } = paperRow.rows[0];
 
-    const teacherShare = Math.round(price * 0.7);
+    const teacherShare = Math.round(price * 0.855);
     const platformShare = price - teacherShare;
 
     const teacherAccount = await client.query(

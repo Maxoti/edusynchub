@@ -91,7 +91,7 @@ export default function AdminDashboard() {
       ]);
 
       if (pRes.status === 403 || poRes.status === 403 || bRes.status === 403) {
-        throw new Error("Not authorized — this account isn't an owner email.");
+        throw new Error("Not authorized ï¿½ this account isn't an owner email.");
       }
       if (!pRes.ok || !poRes.ok || !bRes.ok) {
         throw new Error("One or more admin endpoints failed to load.");
@@ -108,6 +108,7 @@ export default function AdminDashboard() {
   }, [authedFetch]);
 
   useEffect(() => {
+     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
   }, [load]);
 
@@ -150,7 +151,7 @@ export default function AdminDashboard() {
             cursor: "pointer",
           }}
         >
-          {loading ? "Refreshing…" : "Refresh"}
+          {loading ? "Refreshingï¿½" : "Refresh"}
         </button>
       </div>
 
@@ -212,7 +213,7 @@ export default function AdminDashboard() {
                 <td style={{ padding: "6px 8px" }}>{p.teacher_name}</td>
                 <td style={{ padding: "6px 8px" }}>{p.paper_title}</td>
                 <td style={{ padding: "6px 8px" }}>{p.phone_number}</td>
-                <td style={{ padding: "6px 8px" }}>{p.mpesa_receipt ?? "—"}</td>
+                <td style={{ padding: "6px 8px" }}>{p.mpesa_receipt ?? "ï¿½"}</td>
                 <td style={{ padding: "6px 8px" }}>{money(p.amount)}</td>
                 <td style={{ padding: "6px 8px", color: statusColor(p.status), fontWeight: 500 }}>
                   {p.status}
@@ -259,7 +260,7 @@ export default function AdminDashboard() {
                   )}
                 </td>
                 <td style={{ padding: "6px 8px" }}>
-                  {po.completed_at ? new Date(po.completed_at).toLocaleString() : "—"}
+                  {po.completed_at ? new Date(po.completed_at).toLocaleString() : "ï¿½"}
                 </td>
                 <td style={{ padding: "6px 8px" }}>
                   {po.status !== "completed" && (
@@ -276,7 +277,7 @@ export default function AdminDashboard() {
                         cursor: "pointer",
                       }}
                     >
-                      {completingId === po.id ? "Completing…" : "Mark complete"}
+                      {completingId === po.id ? "Completingï¿½" : "Mark complete"}
                     </button>
                   )}
                 </td>
