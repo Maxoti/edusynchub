@@ -94,7 +94,7 @@ export async function initiatePayout(
   const payload = {
     currency: "KES",
     provider: "MPESA-B2C",
-    requires_approval: "YES",
+    requires_approval: "NO",
     transactions: [
       {
         name: teacherName,

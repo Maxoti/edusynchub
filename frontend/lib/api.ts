@@ -13,7 +13,7 @@ export class ApiError extends Error {
 }
 
 function getToken(): string | null {
-  if (typeof window === "undefined") return null; // SSR/server-component safety
+  if (typeof window === "undefined") return null;
   return localStorage.getItem("edusync_token");
 }
 
@@ -31,9 +31,6 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    // Backend routes return { error: "..." }, not { message: "..." } —
-    // check both so real backend error text actually reaches the UI
-    // instead of always falling back to the generic default.
     throw new ApiError(body.message ?? body.error ?? "Request failed", res.status);
   }
 
@@ -47,7 +44,7 @@ export interface Teacher {
   id: string;
   name: string;
   email: string;
-  slug: string; // used for /store/[slug]
+  slug: string;
   onboardingPaid: boolean;
 }
 
@@ -129,8 +126,8 @@ export interface Exam {
 }
 
 export interface PresignResponse {
-  uploadUrl: string; // PUT the file here directly
-  fileKey: string; // pass this back when creating the exam record
+  uploadUrl: string;
+  fileKey: string;
 }
 
 export interface CreateExamPayload {
@@ -146,24 +143,16 @@ export interface CreateExamPayload {
   isBundle: boolean;
 }
 
-// Every field optional - send only what changed. Used both for real
-// metadata edits and for the active/inactive toggle (send just { active }).
 export type UpdateExamPayload = Partial<Omit<CreateExamPayload, "fileKey">> & {
   active?: boolean;
 };
 
-// Step 1: ask the backend for a short-lived R2 presigned PUT URL.
 export const getPresignedUploadUrl = (fileName: string, fileType: string) =>
   request<PresignResponse>("/uploads/presign", {
     method: "POST",
     body: JSON.stringify({ fileName, fileType }),
   });
 
-// Step 2: upload the raw file straight to R2 using that URL. This goes
-// directly to Cloudflare, not through your NestJS server, so a big PDF
-// doesn't tie up your API — but it also means we can't use the shared
-// `request()` helper (no auth header needed, no JSON body/response, and
-// we want upload progress, which fetch doesn't expose).
 export function uploadFileToR2(
   uploadUrl: string,
   file: File,
@@ -190,8 +179,6 @@ export function uploadFileToR2(
   });
 }
 
-// Step 3: save the metadata + file key. Papers are auto-approved on
-// upload - no manual review queue.
 export const createExam = (payload: CreateExamPayload) =>
   request<Exam>("/exams", {
     method: "POST",
@@ -200,17 +187,12 @@ export const createExam = (payload: CreateExamPayload) =>
 
 export const listMyExams = () => request<Exam[]>("/exams/mine");
 
-// Edit metadata and/or toggle active/inactive. "Delete" in the UI means
-// calling this with { active: false } - papers are never hard-deleted
-// once purchases can reference them.
 export const updateExam = (id: string, payload: UpdateExamPayload) =>
   request<Exam>(`/exams/${id}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
 
-// Short-lived presigned GET URL so a teacher can view their own
-// uploaded file.
 export const getFileUrl = (id: string) =>
   request<{ url: string }>(`/exams/${id}/file-url`);
 
@@ -218,16 +200,28 @@ export const getFileUrl = (id: string) =>
 
 export interface WalletData {
   availableBalance: number;
-  minWithdrawal: number;
-  canWithdraw: boolean;
+  canWithdraw:      boolean;
 }
 
 export interface WithdrawResponse {
-  message: string;
-  payoutId: number;
+  message:    string;
+  payoutId:   number;
+  trackingId: string | null;
 }
 
-export const getWalletBalance = () => request<WalletData>("/wallet/balance");
+export const getWalletBalance = () =>
+  request<WalletData>("/wallet/balance");
 
-export const requestWithdrawal = () =>
-  request<WithdrawResponse>("/wallet/withdraw", { method: "POST" });
+/**
+ * Request a withdrawal of a specific amount.
+ * Sends X-Idempotency-Key to prevent duplicate payouts from
+ * double-taps or network retries.
+ */
+export const requestWithdrawal = (amount: number) =>
+  request<WithdrawResponse>("/wallet/withdraw", {
+    method: "POST",
+    body:   JSON.stringify({ amount }),
+    headers: {
+      "X-Idempotency-Key": `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    },
+  });
