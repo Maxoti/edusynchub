@@ -55,8 +55,7 @@ async function lockBalance(client: any, teacherId: number): Promise<number> {
   const { rows } = await client.query(
     `SELECT available_balance
        FROM teacher_balances
-      WHERE teacher_id = $1
-      FOR UPDATE`,
+      WHERE teacher_id = $1`,
     [teacherId]
   );
   return Number(rows[0]?.available_balance ?? 0);
