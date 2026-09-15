@@ -123,6 +123,7 @@ CREATE TABLE public.payouts (
     originator_conversation_id character varying(100),
     mpesa_receipt character varying(50),
     failure_reason text,
+    idempotency_key TEXT UNIQUE,
     requested_at timestamp without time zone DEFAULT now(),
     completed_at timestamp without time zone,
     CONSTRAINT payouts_conversation_id_key UNIQUE (conversation_id)
