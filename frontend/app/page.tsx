@@ -86,7 +86,7 @@ export default function LandingPage() {
             <Step
               number="3"
               title="Get paid on M-Pesa"
-              description="Share your link. When a parent buys a paper, your 85.5% lands in your wallet — withdraw anytime."
+              description="Share your link. When a parent buys a paper, your 85.5% lands in your wallet instantly."
             />
           </div>
         </div>
