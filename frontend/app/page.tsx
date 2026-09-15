@@ -10,7 +10,6 @@ export default function LandingPage() {
         <span className="font-display text-xl text-[#1A56DB]">EdusyncHub</span>
         <div className="flex items-center gap-6">
           <Link href="/login" className="text-sm font-medium text-[#16233D] hover:text-[#1A56DB]">
-            Log in
           </Link>
           <Link
             href="/signup"
@@ -32,8 +31,10 @@ export default function LandingPage() {
           </h1>
           <p className="text-lg text-[#6B7280] mt-6 leading-relaxed">
             Upload the exam papers you already write. Parents across Kenya pay
-            KES 50–100 to download them via M-Pesa. You keep 85.5% — paid
-            straight to your phone, every time.
+            KES 50–100 to download them via M-Pesa. You keep 85.5%.
+
+            Withdrawals are typically processed within a few hours during business hours.
+            .
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <Link
