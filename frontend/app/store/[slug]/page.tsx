@@ -29,10 +29,30 @@ interface CompletedPurchase {
   downloadToken: string;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/);
   return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
 }
+
+/**
+ * Returns the slug of the currently logged-in teacher, or null if not logged in.
+ * Reads from localStorage where the auth token/teacher object is stored.
+ */
+function getLoggedInSlug(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    // Try edusync_teacher object first
+    const raw = localStorage.getItem("edusync_teacher");
+    if (raw) return JSON.parse(raw)?.slug ?? null;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function ShopAvatar({ name }: { name: string }) {
   return (
@@ -58,11 +78,15 @@ function StyledShopName({ name }: { name: string }) {
   );
 }
 
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function StorePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params);
   const [data, setData] = useState<StoreData | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+
+  // Check if the visitor is the owner of this store
 
   const [filters, setFilters] = useState({
     curriculum: "",
@@ -73,10 +97,9 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
   });
 
   const [orderPaper, setOrderPaper] = useState<Paper | null>(null);
-
-  // Once a paper's payment completes, its entry lives here - the card
-  // itself becomes the download button, the modal has already closed.
-  const [completedPurchases, setCompletedPurchases] = useState<Record<string, CompletedPurchase>>({});
+  const [completedPurchases, setCompletedPurchases] = useState<
+    Record<string, CompletedPurchase>
+  >({});
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -97,8 +120,19 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
     load();
   }, [load]);
 
-  const handlePaid = (paperId: string, purchaseId: string, downloadToken: string) => {
-    setCompletedPurchases((prev) => ({ ...prev, [paperId]: { purchaseId, downloadToken } }));
+  // Determine ownership after mount (localStorage is client-only)
+  // Computed directly — no state needed since this is a "use client" component
+const isOwner = getLoggedInSlug() === slug;
+
+  const handlePaid = (
+    paperId: string,
+    purchaseId: string,
+    downloadToken: string
+  ) => {
+    setCompletedPurchases((prev) => ({
+      ...prev,
+      [paperId]: { purchaseId, downloadToken },
+    }));
   };
 
   const handleDownload = async (paperId: string) => {
@@ -116,13 +150,17 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
     }
   };
 
-  if (loading) return <p className="text-center py-20 text-[#6B7280]">Loading shop...</p>;
-  if (notFound || !data) return <p className="text-center py-20 text-[#6B7280]">Shop not found.</p>;
+  if (loading)
+    return <p className="text-center py-20 text-[#6B7280]">Loading shop...</p>;
+  if (notFound || !data)
+    return <p className="text-center py-20 text-[#6B7280]">Shop not found.</p>;
 
   const shopName = data.teacher.businessName || data.teacher.name;
 
   const filterOptions = (key: keyof Paper) =>
-    Array.from(new Set(data.papers.map((p) => p[key]).filter(Boolean))) as string[];
+    Array.from(
+      new Set(data.papers.map((p) => p[key]).filter(Boolean))
+    ) as string[];
 
   const filtered = data.papers.filter((p) => {
     if (filters.curriculum && p.curriculum !== filters.curriculum) return false;
@@ -136,16 +174,26 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
   return (
     <div className="min-h-screen bg-[#F9FAFB]">
       <header className="bg-[#1A56DB] text-white text-center py-10 px-4 relative">
-        <Link href="/dashboard/upload" className="absolute top-4 left-4 text-sm text-white/80 hover:text-white">
-          &larr; Back to dashboard
-        </Link>
+
+        {/* Only the store owner sees this link */}
+        {isOwner && (
+          <Link
+            href="/dashboard/upload"
+            className="absolute top-4 left-4 text-sm text-white/80 hover:text-white"
+          >
+            &larr; Back to dashboard
+          </Link>
+        )}
+
         <div className="flex flex-col items-center gap-3">
           <ShopAvatar name={shopName} />
           <h1 className="font-display text-3xl">
             <StyledShopName name={shopName} />
           </h1>
         </div>
-        <p className="text-white/70 text-sm mt-2">Exam papers and revision materials</p>
+        <p className="text-white/70 text-sm mt-2">
+          Exam papers and revision materials
+        </p>
       </header>
 
       <div className="max-w-5xl mx-auto px-4 py-6 flex flex-wrap gap-3">
@@ -190,7 +238,10 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
           filtered.map((paper) => {
             const completed = completedPurchases[paper.id];
             return (
-              <div key={paper.id} className="bg-white rounded-xl border border-black/5 p-4 flex flex-col">
+              <div
+                key={paper.id}
+                className="bg-white rounded-xl border border-black/5 p-4 flex flex-col"
+              >
                 <div className="flex justify-between items-start mb-2">
                   <span className="text-xs text-[#6B7280]">
                     {paper.curriculum} - {paper.year}
@@ -201,7 +252,9 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
                 </div>
                 <h3 className="font-medium text-[#16233D] mb-1">{paper.title}</h3>
                 <p className="text-xs text-[#6B7280] mb-4">
-                  {[paper.examType, paper.term, paper.subject].filter(Boolean).join(" - ")}
+                  {[paper.examType, paper.term, paper.subject]
+                    .filter(Boolean)
+                    .join(" - ")}
                 </p>
 
                 {completed ? (
@@ -239,6 +292,8 @@ export default function StorePage({ params }: { params: Promise<{ slug: string }
   );
 }
 
+// ── FilterSelect ──────────────────────────────────────────────────────────────
+
 function FilterSelect({
   value,
   onChange,
@@ -266,9 +321,11 @@ function FilterSelect({
   );
 }
 
+// ── OrderModal ────────────────────────────────────────────────────────────────
+
 type OrderStage = "form" | "sending" | "awaiting_payment" | "failed";
 
-const POLL_INTERVAL_MS = 3000;
+const POLL_INTERVAL_MS  = 3000;
 const MAX_POLL_ATTEMPTS = 40; // ~2 minutes
 
 function OrderModal({
@@ -284,12 +341,12 @@ function OrderModal({
   teacherName: string;
   whatsappNumber: string | null;
 }) {
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [stage, setStage] = useState<OrderStage>("form");
-  const [error, setError] = useState<string | null>(null);
+  const [phone, setPhone]   = useState("");
+  const [email, setEmail]   = useState("");
+  const [stage, setStage]   = useState<OrderStage>("form");
+  const [error, setError]   = useState<string | null>(null);
 
-  const pollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollTimer    = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollAttempts = useRef(0);
 
   useEffect(() => {
@@ -304,13 +361,13 @@ function OrderModal({
       pollAttempts.current += 1;
 
       try {
-        const res = await fetch(`${API_URL}/papers/purchases/${purchaseId}/status`);
+        const res  = await fetch(`${API_URL}/papers/purchases/${purchaseId}/status`);
         const json = await res.json();
 
         if (json.status === "paid") {
           if (pollTimer.current) clearInterval(pollTimer.current);
           onPaid(paper.id, purchaseId, json.download_token);
-          onClose(); // auto-close the moment payment is confirmed
+          onClose();
           return;
         }
         if (json.status === "failed") {
@@ -319,13 +376,15 @@ function OrderModal({
           setError("Payment was not completed.");
         }
       } catch {
-        // transient network error - just try again next tick
+        // transient network error — try again next tick
       }
 
       if (pollAttempts.current >= MAX_POLL_ATTEMPTS) {
         if (pollTimer.current) clearInterval(pollTimer.current);
         setStage("failed");
-        setError("We have not heard back from M-Pesa yet. Check your phone, or try again.");
+        setError(
+          "We have not heard back from M-Pesa yet. Check your phone, or try again."
+        );
       }
     }, POLL_INTERVAL_MS);
   };
@@ -338,10 +397,13 @@ function OrderModal({
     setError(null);
     setStage("sending");
     try {
-      const res = await fetch(`${API_URL}/papers/${paper.id}/purchase`, {
-        method: "POST",
+      const res  = await fetch(`${API_URL}/papers/${paper.id}/purchase`, {
+        method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneNumber: phone, email: email || "no-reply@example.com" }),
+        body:    JSON.stringify({
+          phoneNumber: phone,
+          email: email || "no-reply@example.com",
+        }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -377,7 +439,8 @@ function OrderModal({
 
         {stage === "awaiting_payment" && (
           <p className="text-sm text-[#6B7280] bg-black/5 rounded-lg px-3 py-2">
-            Check your phone to complete the M-Pesa payment. This closes automatically once confirmed.
+            Check your phone to complete the M-Pesa payment. This closes
+            automatically once confirmed.
           </p>
         )}
 
@@ -395,7 +458,9 @@ function OrderModal({
               />
             </label>
             <label className="block mb-4">
-              <span className="text-sm font-medium text-[#16233D] mb-1 block">Email (optional)</span>
+              <span className="text-sm font-medium text-[#16233D] mb-1 block">
+                Email (optional)
+              </span>
               <input
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -405,7 +470,9 @@ function OrderModal({
             </label>
 
             {error && (
-              <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 mb-3">{error}</p>
+              <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2 mb-3">
+                {error}
+              </p>
             )}
 
             <button
