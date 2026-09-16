@@ -192,7 +192,8 @@ export default function StorePage({
         {isOwner && (
           <Link
             href="/dashboard/upload"
-            className="absolute top-4 left-4 text-sm text-white/80 hover:text-white"
+            className="block text-center sm:absolute sm:top-4 sm:left-4 sm:text-left
+               text-sm text-white/80 hover:text-white mb-4 sm:mb-0"
           >
             ← Back to dashboard
           </Link>
