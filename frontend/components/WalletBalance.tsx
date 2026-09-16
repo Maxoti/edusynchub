@@ -88,13 +88,49 @@ export function WalletBalance() {
             fontSize: 14,
           }}
         />
-        <button
-          onClick={handleWithdraw}
-          disabled={!wallet.canWithdraw || withdrawing}
-          style={{ whiteSpace: "nowrap", padding: "0 16px", height: 40, backgroundColor: "#1A56DB", color: "#fff", border: "none", borderRadius: 8, fontWeight: 500, cursor: "pointer", opacity: (!wallet.canWithdraw || withdrawing) ? 0.6 : 1 }}
-        >
-          {withdrawing ? "Processing..." : "Withdraw"}
-        </button>
+       <div
+  style={{
+    display: "flex",
+    gap: 12,
+    alignItems: "center",
+    width: "100%",
+    flexWrap: "wrap",
+  }}
+>
+  <input
+    type="number"
+    placeholder={`Min KES ${wallet.minWithdrawal}`}
+    style={{
+      flex: "1 1 200px",
+      minWidth: 0,
+      height: 40,
+      padding: "0 16px",
+      boxSizing: "border-box",
+      border: "1px solid #ddd",
+      borderRadius: 8,
+    }}
+  />
+
+  <button
+    onClick={handleWithdraw}
+    disabled={!wallet.canWithdraw || withdrawing}
+    style={{
+      flex: "0 0 auto",
+      height: 40,
+      padding: "0 16px",
+      backgroundColor: "#1A56DB",
+      color: "#fff",
+      border: "none",
+      borderRadius: 8,
+      fontWeight: 500,
+      cursor: "pointer",
+      whiteSpace: "nowrap",
+      opacity: (!wallet.canWithdraw || withdrawing) ? 0.6 : 1,
+    }}
+  >
+    {withdrawing ? "Processing..." : "Withdraw"}
+  </button>
+</div>
       </div>
 
       {!wallet.canWithdraw && (
