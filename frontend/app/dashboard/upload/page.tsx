@@ -151,12 +151,7 @@ function UploadForm({ onUploaded }: { onUploaded: () => void }) {
   const availableGrades = form.curriculum ? GRADES_BY_CURRICULUM[form.curriculum] : [];
   const maxFileMb = form.isBundle ? MAX_ZIP_MB : MAX_PDF_MB;
 
-  // Derived value, computed directly during render — not stored in state
-  // and synced via an effect. Storing a value that's fully derivable from
-  // other state and re-syncing it with setState in an effect is exactly
-  // the pattern react-hooks/set-state-in-effect (and React's own docs)
-  // warn against: it just forces an extra render for no reason.
-  const autoTitle = form.isBundle
+    const autoTitle = form.isBundle
     ? [form.grade, "Full Set", form.term, form.year].filter(Boolean).join(" ")
     : [form.grade, form.subject, form.examType, form.term, form.year].filter(Boolean).join(" ");
   const displayedTitle = titleTouched ? form.title : autoTitle;
