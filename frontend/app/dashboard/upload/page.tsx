@@ -12,32 +12,17 @@ import {
   listMyExams,
   ApiError,
   type Exam,
-  type ExamType,
 } from "@/lib/api";
+import {
+  EXAM_TYPES,
+  GRADES_BY_CURRICULUM,
+  CURRICULA,
+  TERMS,
+  MAX_PDF_MB,
+  MAX_ZIP_MB,
+  type ExamType,
+} from "@/constants/curriculum";
 
-const EXAM_TYPES: ExamType[] = [
-  "Revision Materials",
-  "Topical Exams",
-  "Mid-Term Exams",
-  "End-Term Exams",
-  "Mock Exams",
-  "Schemes of Work",
-  "Lesson Notes",
-];
-
-const GRADES_BY_CURRICULUM: Record<string, string[]> = {
-  CBE: [
-    "PP1", "PP2",
-    "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5",
-    "Grade 6", "Grade 7", "Grade 8", "Grade 9", "Grade 10",
-  ],
-  "8-4-4": ["Form 1", "Form 2", "Form 3", "Form 4"],
-};
-
-const TERMS = ["Term 1", "Term 2", "Term 3"];
-const CURRICULA = Object.keys(GRADES_BY_CURRICULUM); // ["CBE", "8-4-4"]
-const MAX_PDF_MB = 25;
-const MAX_ZIP_MB = 80;
 
 export default function UploadDashboardPage() {
   return (
@@ -90,7 +75,7 @@ function DashboardContent() {
             rel="noreferrer"
             className="text-sm font-medium text-[#16233D] border border-black/10 rounded-lg px-4 py-2 hover:bg-black/5"
           >
-            👁️ View my public shop
+             View my public shop
           </a>
           <button onClick={logout} className="text-sm font-medium text-[#6B7280] hover:text-[#16233D]">
             Log out
@@ -366,7 +351,7 @@ function UploadForm({ onUploaded }: { onUploaded: () => void }) {
 
         <TextField label="Year" type="number" value={form.year} onChange={update("year")} />
         {!form.isBundle && (
-          <SelectField label="Type" value={form.examType} onChange={update("examType")} options={EXAM_TYPES} />
+          <SelectField label="Type" value={form.examType} onChange={update("examType")} options={[...EXAM_TYPES]} />
         )}
 
         <TextField label="Price (KES)" type="number" value={form.price} onChange={update("price")} min={10} />
@@ -432,7 +417,6 @@ function TextField({
     </label>
   );
 }
-
 function SelectField({
   label,
   options,

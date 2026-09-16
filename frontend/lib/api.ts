@@ -1,8 +1,9 @@
 // lib/api.ts
-// Thin fetch wrapper. Points at your NestJS backend.
+// Thin fetch wrapper. Points at your Express backend.
 // NEXT_PUBLIC_ prefix is required for any env var read in the browser.
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://api.edusynchub.co.ke";
+export type { ExamType } from "@/constants/curriculum";
 
 export class ApiError extends Error {
   status: number;
@@ -100,14 +101,7 @@ export const checkActivationStatus = (checkoutRequestId: string) =>
 
 // ---- Upload / exam endpoints ----
 
-export type ExamType =
-  | "Revision Materials"
-  | "Topical Exams"
-  | "Mid-Term Exams"
-  | "End-Term Exams"
-  | "Mock Exams"
-  | "Schemes of Work"
-  | "Lesson Notes";
+
 
 export interface Exam {
   id: string;
@@ -117,7 +111,7 @@ export interface Exam {
   subject: string;
   term: string;
   year: number;
-  examType: ExamType;
+  examType: string;
   price: number;
   isApproved: boolean;
   isBundle: boolean;
@@ -137,7 +131,7 @@ export interface CreateExamPayload {
   subject: string;
   term: string;
   year: number;
-  examType: ExamType;
+  examType: string;
   price: number;
   fileKey: string;
   isBundle: boolean;

@@ -172,9 +172,7 @@ const isOwner = !!teacher && teacher.slug === slug;
   // Keep canonical order for grades
   const gradeOptions = ALL_GRADES.filter((g) => existingGrades.includes(g));
   const termOptions  = existingTerms.sort();
-  console.log("papers from API:", data.papers);
-console.log("existingGrades:", existingGrades);
-console.log("gradeOptions:", gradeOptions);
+ 
 
   // ── JSX ─────────────────────────────────────────────────────────────────────
 
