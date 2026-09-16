@@ -4,6 +4,7 @@
 import { useEffect, useState, useCallback, useRef, use } from "react";
 import Link from "next/link";
 import type { Paper, StoreData, CompletedPurchase } from "@/types/store";
+import { useAuth } from "@/context/AuthContext";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -39,16 +40,7 @@ function getInitials(name: string): string {
   return parts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
 }
 
-function getLoggedInSlug(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem("edusync_teacher");
-    if (raw) return JSON.parse(raw)?.slug ?? null;
-    return null;
-  } catch {
-    return null;
-  }
-}
+
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -102,11 +94,10 @@ export default function StorePage({
     year:       "",
   });
 
-  // Owner check — computed once, no state needed
-  const isOwner = getLoggedInSlug() === slug;
-
+  // Owner check — computed once, no stat
   // ── Data fetching ───────────────────────────────────────────────────────────
-
+const { teacher } = useAuth();
+const isOwner = !!teacher && teacher.slug === slug;
   const load = useCallback(async () => {
     try {
       const res = await fetch(`${API_URL}/store/${slug}`);
