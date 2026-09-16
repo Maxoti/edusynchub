@@ -9,10 +9,12 @@ import {
   getPresignedUploadUrl,
   uploadFileToR2,
   createExam,
+  updateExam,
   listMyExams,
   ApiError,
   type Exam,
 } from "@/lib/api";
+
 import {
   EXAM_TYPES,
   GRADES_BY_CURRICULUM,
@@ -100,7 +102,7 @@ function DashboardContent() {
         ) : (
           <div className="space-y-3">
             {exams.map((exam) => (
-              <ExamRow key={exam.id} exam={exam} />
+              <ExamRow key={exam.id} exam={exam} onChanged={refreshExams} />
             ))}
           </div>
         )}
@@ -444,25 +446,181 @@ function SelectField({
     </label>
   );
 }
+function ExamRow({ exam, onChanged }: { exam: Exam; onChanged: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-function ExamRow({ exam }: { exam: Exam }) {
+  const handleDelete = async () => {
+    if (!confirm(`Remove "${exam.title}" from your shop? You can re-activate it later from Edit.`)) return;
+    setDeleting(true);
+    try {
+      await updateExam(exam.id, { active: false });
+      onChanged();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Failed to remove listing.");
+      setDeleting(false);
+    }
+  };
+
   return (
-    <div className="flex items-center justify-between bg-white rounded-xl border border-black/5 px-4 py-3">
-      <div>
-        <p className="text-sm font-medium text-[#16233D]">{exam.title}</p>
-        <p className="text-xs text-[#6B7280] mt-0.5">
-          {exam.grade} · {exam.subject} · {exam.term} {exam.year} · KES {exam.price}
-        </p>
+    <>
+      <div className="flex items-center justify-between bg-white rounded-xl border border-black/5 px-4 py-3">
+        <div>
+          <p className="text-sm font-medium text-[#16233D]">{exam.title}</p>
+          <p className="text-xs text-[#6B7280] mt-0.5">
+            {exam.grade} · {exam.subject} · {exam.examType} · {exam.term} {exam.year} · KES {exam.price}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {!exam.active && (
+            <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-black/5 text-[#6B7280]">
+              Hidden
+            </span>
+          )}
+          <span
+            className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+              exam.isApproved
+                ? "bg-[#0F6E5C]/10 text-[#0F6E5C]"
+                : "bg-[#C9972D]/10 text-[#C9972D]"
+            }`}
+          >
+            {exam.isApproved ? "Live" : "Pending review"}
+          </span>
+          <button
+            onClick={() => setEditing(true)}
+            className="text-xs font-medium text-[#1A56DB] border border-[#1A56DB]/20 rounded-lg px-3 py-1.5 hover:bg-[#1A56DB]/5"
+          >
+            Edit
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={deleting || !exam.active}
+            className="text-xs font-medium text-red-600 border border-red-200 rounded-lg px-3 py-1.5 hover:bg-red-50 disabled:opacity-50"
+          >
+            {deleting ? "Removing…" : exam.active ? "Delete" : "Removed"}
+          </button>
+        </div>
       </div>
-      <span
-        className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-          exam.isApproved
-            ? "bg-[#0F6E5C]/10 text-[#0F6E5C]"
-            : "bg-[#C9972D]/10 text-[#C9972D]"
-        }`}
-      >
-        {exam.isApproved ? "Live" : "Pending review"}
-      </span>
+
+      {editing && (
+        <EditExamModal
+          exam={exam}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            onChanged();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function EditExamModal({
+  exam,
+  onClose,
+  onSaved,
+}: {
+  exam: Exam;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [title, setTitle] = useState(exam.title);
+  const [price, setPrice] = useState(String(exam.price));
+  const [examType, setExamType] = useState<ExamType>(exam.examType as ExamType);
+  const [active, setActive] = useState(exam.active);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    setError(null);
+    if (!title.trim()) {
+      setError("Title is required.");
+      return;
+    }
+    const numericPrice = Number(price);
+    if (!numericPrice || numericPrice < 10) {
+      setError("Price must be at least KES 10.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await updateExam(exam.id, {
+        title: title.trim(),
+        price: numericPrice,
+        examType,
+        active,
+      });
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to save changes.");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md space-y-4">
+        <h3 className="font-display text-lg text-[#16233D]">Edit paper</h3>
+
+        <TextField
+          label="Title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
+
+        <div className="grid grid-cols-2 gap-4">
+          <SelectField
+            label="Type"
+            value={examType}
+            onChange={(e) => setExamType(e.target.value as ExamType)}
+            options={[...EXAM_TYPES]}
+          />
+          <TextField
+            label="Price (KES)"
+            type="number"
+            min={10}
+            value={price}
+            onChange={(e) => setPrice(e.target.value)}
+          />
+        </div>
+
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={active}
+            onChange={(e) => setActive(e.target.checked)}
+          />
+          <span className="font-medium text-[#16233D]">Visible in my shop</span>
+        </label>
+        <p className="text-xs text-[#6B7280] -mt-2">
+          Turning this off hides the paper without deleting it — you can turn it back on anytime.
+          {!exam.isApproved && " Approval status is set by EdusyncHub review and can't be changed here."}
+        </p>
+
+        {error && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+            {error}
+          </p>
+        )}
+
+        <div className="flex gap-3 pt-2">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="flex-1 border border-black/10 rounded-xl py-2.5 font-medium text-[#16233D] hover:bg-black/5"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex-1 bg-[#1A56DB] text-white rounded-xl py-2.5 font-medium hover:bg-[#1543ad] disabled:opacity-60"
+          >
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
