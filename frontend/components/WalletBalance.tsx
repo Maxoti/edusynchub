@@ -97,19 +97,7 @@ export function WalletBalance() {
     flexWrap: "wrap",
   }}
 >
-  <input
-    type="number"
-    placeholder={`Min KES ${wallet.minWithdrawal}`}
-    style={{
-      flex: "1 1 200px",
-      minWidth: 0,
-      height: 40,
-      padding: "0 16px",
-      boxSizing: "border-box",
-      border: "1px solid #ddd",
-      borderRadius: 8,
-    }}
-  />
+  
 
   <button
     onClick={handleWithdraw}
