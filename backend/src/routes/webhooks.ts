@@ -1,41 +1,173 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { randomBytes } from "crypto";
 import { pool } from "../lib/db";
 
 const router = Router();
 
-// IntaSend sends ALL event types (collection + payout) to this single
-// endpoint - there's no separate URL per event type. We branch on the
-// payload shape instead.
-router.post("/intasend", async (req, res) => {
-  const body = req.body ?? {};
+// ─────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────
 
-  // IntaSend's only webhook auth is this shared "challenge" string -
-  // no HMAC signature exists. INTASEND_WEBHOOK_CHALLENGE must match
-  // exactly what you set on the webhook in IntaSend's dashboard.
-  if (body.challenge !== process.env.INTASEND_WEBHOOK_CHALLENGE) {
-    console.warn("IntaSend webhook: challenge mismatch, rejecting");
-    return res.status(401).json({ error: "Invalid challenge" });
+interface StkCallbackItem {
+  Name: string;
+  Value?: string | number;
+}
+
+interface StkCallbackBody {
+  Body: {
+    stkCallback: {
+      MerchantRequestID: string;
+      CheckoutRequestID: string;
+      ResultCode: number;
+      ResultDesc: string;
+      CallbackMetadata?: {
+        Item: StkCallbackItem[];
+      };
+    };
+  };
+}
+
+interface DarajaResultParameter {
+  Key: string;
+  Value: string | number;
+}
+
+interface DarajaB2CResult {
+  ConversationID?: string;
+  OriginatorConversationID?: string;
+  ResultCode: number;
+  ResultDesc?: string;
+  ResultParameters?: {
+    ResultParameter: DarajaResultParameter[];
+  };
+}
+
+interface PayoutRow {
+  id: string;
+  teacher_id: string;
+  amount: number;
+  conversation_id: string;
+  status: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Shared helpers
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Flattens Daraja's CallbackMetadata.Item array (STK) into a plain object. */
+function flattenStkMetadata(items: StkCallbackItem[] | undefined): Record<string, string | number> {
+  if (!items) return {};
+  return Object.fromEntries(items.map((item) => [item.Name, item.Value ?? ""]));
+}
+
+/** Flattens Daraja's ResultParameters.ResultParameter array (B2C) into a plain object. */
+function flattenB2CResultParameters(result: DarajaB2CResult): Record<string, string | number> {
+  const list = result.ResultParameters?.ResultParameter ?? [];
+  return Object.fromEntries(list.map((p) => [p.Key, p.Value]));
+}
+
+async function findProcessingPayout(conversationId: string | undefined): Promise<PayoutRow | null> {
+  if (!conversationId) return null;
+
+  const { rows } = await pool.query<PayoutRow>(
+    `SELECT * FROM payouts WHERE conversation_id = $1 AND status = 'processing'`,
+    [conversationId]
+  );
+  return rows[0] ?? null;
+}
+
+/**
+ * Credits the teacher's ledger account and marks a payout as completed.
+ * Used by the B2C result handler on success.
+ */
+async function completePayout(
+  client: import("pg").PoolClient,
+  payout: PayoutRow,
+  opts: { mpesaReceipt?: string | null; sourceEventType: string; rawPayload: unknown }
+) {
+  const accountRow = await client.query(
+    `SELECT id FROM ledger_accounts WHERE teacher_id = $1 AND account_type = 'teacher_payable'`,
+    [payout.teacher_id]
+  );
+  const accountId = accountRow.rows[0]?.id;
+  if (!accountId) {
+    throw new Error(`No teacher_payable ledger account found for teacher ${payout.teacher_id}`);
   }
 
-  // Collection (purchase) events have a confirmed shape: invoice_id + state.
-  if (body.invoice_id) {
-    return handleCollectionEvent(body, res);
+  await client.query(
+    `INSERT INTO ledger_entries (account_id, entry_type, amount, payout_id, description)
+     VALUES ($1, 'debit', $2, $3, 'Payout to teacher')`,
+    [accountId, payout.amount, payout.id]
+  );
+
+  await client.query(
+    `UPDATE payouts
+     SET status = 'completed', completed_at = now(), mpesa_receipt = $1
+     WHERE id = $2`,
+    [opts.mpesaReceipt ?? null, payout.id]
+  );
+
+  await client.query(
+    `INSERT INTO payment_events (payout_id, checkout_request_id, event_type, payload)
+     VALUES ($1, $2, $3, $4)`,
+    [payout.id, payout.conversation_id, opts.sourceEventType, JSON.stringify(opts.rawPayload)]
+  );
+}
+
+async function failPayout(client: import("pg").PoolClient, payout: PayoutRow, reason: string) {
+  await client.query(
+    `UPDATE payouts SET status = 'failed', failure_reason = $1 WHERE id = $2`,
+    [reason, payout.id]
+  );
+}
+
+/** Wraps a DB update in a transaction with rollback on error and tagged error logging. */
+async function withTransaction(
+  routeName: string,
+  fn: (client: import("pg").PoolClient) => Promise<void>
+) {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await fn(client);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error(`[webhooks:${routeName}] transaction failed:`, err);
+  } finally {
+    client.release();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Daraja STK Push — collections
+//
+// Fired by Safaricom against DARAJA_SUBSCRIPTION_CALLBACK_URL after the
+// customer completes (or cancels/fails) the STK prompt triggered by
+// initiateSubscriptionStkPush() in lib/daraja.ts.
+// ─────────────────────────────────────────────────────────────────────────
+
+router.post("/stk-callback", async (req: Request, res: Response) => {
+  const body = req.body as StkCallbackBody;
+  const callback = body?.Body?.stkCallback;
+
+  if (!callback) {
+    console.warn("[webhooks:stk-callback] unexpected payload shape:", JSON.stringify(req.body));
+    return res.status(200).json({ received: true });
   }
 
-  // Payout (Send Money) events - shape NOT confirmed against IntaSend's
-  // docs. Logging the raw payload so you can verify field names against
-  // a real test withdrawal before trusting this branch in production.
-  console.log("IntaSend payout webhook payload (verify shape):", JSON.stringify(body));
-  return handlePayoutEvent(body, res);
+  return handleStkCallback(callback, res);
 });
 
-async function handleCollectionEvent(body: any, res: any) {
-  const { invoice_id, state } = body;
+async function handleStkCallback(
+  callback: StkCallbackBody["Body"]["stkCallback"],
+  res: Response
+) {
+  const { CheckoutRequestID, ResultCode, CallbackMetadata } = callback;
 
   const { rows } = await pool.query(
     `SELECT * FROM purchases WHERE checkout_request_id = $1`,
-    [invoice_id]
+    [CheckoutRequestID]
   );
   const purchase = rows[0];
 
@@ -43,28 +175,30 @@ async function handleCollectionEvent(body: any, res: any) {
     return res.status(200).json({ received: true });
   }
 
-  if (state !== "COMPLETE") {
-    if (state === "FAILED") {
-      await pool.query(
-        `UPDATE purchases SET status = 'failed', updated_at = now() WHERE id = $1`,
-        [purchase.id]
-      );
-    }
+  // ResultCode 0 = success. Anything else = customer cancelled, insufficient
+  // funds, timed out, etc. - all treated as a failed attempt.
+  if (ResultCode !== 0) {
+    await pool.query(
+      `UPDATE purchases SET status = 'failed', updated_at = now() WHERE id = $1`,
+      [purchase.id]
+    );
     return res.status(200).json({ received: true });
   }
 
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
+  const metadata = flattenStkMetadata(CallbackMetadata?.Item);
+  const mpesaReceipt = (metadata.MpesaReceiptNumber as string) ?? null;
+  const phoneNumber = metadata.PhoneNumber ? String(metadata.PhoneNumber) : purchase.phone_number;
 
+  await withTransaction("stk-callback", async (client) => {
     const downloadToken = randomBytes(24).toString("hex");
 
     await client.query(
       `UPDATE purchases
        SET status = 'paid', download_token = $1,
-           token_expires_at = now() + interval '24 hours', updated_at = now()
-       WHERE id = $2`,
-      [downloadToken, purchase.id]
+           token_expires_at = now() + interval '24 hours',
+           mpesa_receipt = $2, updated_at = now()
+       WHERE id = $3`,
+      [downloadToken, mpesaReceipt, purchase.id]
     );
 
     const paperRow = await client.query(
@@ -97,69 +231,55 @@ async function handleCollectionEvent(body: any, res: any) {
 
     await client.query(
       `INSERT INTO payment_events (purchase_id, checkout_request_id, phone_number, event_type, payload)
-       VALUES ($1, $2, $3, 'intasend_collection_complete', $4)`,
-      [purchase.id, invoice_id, purchase.phone_number, JSON.stringify(body)]
+       VALUES ($1, $2, $3, 'stk_collection_complete', $4)`,
+      [purchase.id, CheckoutRequestID, phoneNumber, JSON.stringify(callback)]
     );
-
-    await client.query("COMMIT");
-  } catch (err) {
-    await client.query("ROLLBACK");
-    console.error("Failed to process purchase webhook:", err);
-  } finally {
-    client.release();
-  }
+  });
 
   return res.status(200).json({ received: true });
 }
 
-async function handlePayoutEvent(body: any, res: any) {
-  const trackingId = body.tracking_id ?? body.id;
-  const status = body.status ?? body.state;
+// ─────────────────────────────────────────────────────────────────────────
+// Daraja B2C — payouts
+//
+// B2C is asynchronous: the initial HTTP response to sendB2CPayment() only
+// confirms Safaricom accepted the request. The actual outcome arrives
+// later on one of these two URLs.
+// ─────────────────────────────────────────────────────────────────────────
 
-  const { rows } = await pool.query(
-    `SELECT * FROM payouts WHERE conversation_id = $1 AND status = 'processing'`,
-    [trackingId]
-  );
-  const payout = rows[0];
+router.post("/b2c-result", async (req: Request, res: Response) => {
+  const result = (req.body?.Result ?? {}) as DarajaB2CResult;
+  return handleB2CResultEvent(result, res);
+});
+
+router.post("/b2c-timeout", async (req: Request, res: Response) => {
+  const result = (req.body?.Result ?? {}) as DarajaB2CResult;
+  console.warn("[webhooks:b2c-timeout] payload:", JSON.stringify(req.body));
+  return handleB2CResultEvent(result, res);
+});
+
+async function handleB2CResultEvent(result: DarajaB2CResult, res: Response) {
+  const conversationId = result.ConversationID ?? result.OriginatorConversationID;
+
+  const payout = await findProcessingPayout(conversationId);
   if (!payout) {
     return res.status(200).json({ received: true });
   }
 
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    if (status === "completed" || status === "COMPLETE" || status === "success") {
-      const accountRow = await client.query(
-        `SELECT id FROM ledger_accounts WHERE teacher_id = $1 AND account_type = 'teacher_payable'`,
-        [payout.teacher_id]
-      );
-      await client.query(
-        `INSERT INTO ledger_entries (account_id, entry_type, amount, payout_id, description)
-         VALUES ($1, 'debit', $2, $3, 'Payout to teacher')`,
-        [accountRow.rows[0].id, payout.amount, payout.id]
-      );
-      await client.query(
-        `UPDATE payouts SET status = 'completed', completed_at = now() WHERE id = $1`,
-        [payout.id]
-      );
-    } else if (status === "failed" || status === "FAILED") {
-      await client.query(
-        `UPDATE payouts SET status = 'failed', failure_reason = $1 WHERE id = $2`,
-        [JSON.stringify(body), payout.id]
-      );
+  await withTransaction("b2c-result", async (client) => {
+    if (result.ResultCode === 0) {
+      const params = flattenB2CResultParameters(result);
+      await completePayout(client, payout, {
+        mpesaReceipt: (params.TransactionReceipt as string) ?? null,
+        sourceEventType: "b2c_payout_complete",
+        rawPayload: result,
+      });
+    } else {
+      await failPayout(client, payout, result.ResultDesc ?? JSON.stringify(result));
     }
-
-    await client.query("COMMIT");
-  } catch (err) {
-    await client.query("ROLLBACK");
-    console.error("Failed to process payout webhook:", err);
-  } finally {
-    client.release();
-  }
+  });
 
   return res.status(200).json({ received: true });
 }
 
 export default router;
-
