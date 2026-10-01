@@ -1,0 +1,37 @@
+---
+deployment:
+  tasks:
+    # DEPLOYPATH is the LIVE Node.js app root (where cPanel's Setup Node.js
+    # App expects package.json, dist/, certs/ to live) — NOT the same folder
+    # this repo gets cloned into. certs/ was uploaded manually once and is
+    # never touched by this deploy script.
+    - export DEPLOYPATH=/home/revisio1/edusynchub.co.ke/backend/
+    - export NODEVENV=/home/revisio1/nodevenv/edusynchub.co.ke/backend/22
+
+    # This is a monorepo — backend/ and frontend/ are siblings in the same
+    # repo. Every task below operates inside backend/ specifically; the
+    # frontend/ folder is never touched by this deploy.
+
+    # Build the TypeScript inside the repo checkout first, using the same
+    # Node version as production (activating the venv) so devDependencies
+    # like typescript itself are available for the build step.
+    - source $NODEVENV/bin/activate && cd backend && npm install && npm run build
+
+    # Copy only what the running app actually needs — built output and
+    # manifest files. backend/src/ and backend/node_modules from the repo
+    # checkout stay behind; they never reach the live app folder.
+    - /bin/cp -R backend/dist/* $DEPLOYPATH/dist/
+    - /bin/cp backend/package.json $DEPLOYPATH
+    - /bin/cp backend/package-lock.json $DEPLOYPATH
+
+    # Install production dependencies directly in the live app folder —
+    # this is a SEPARATE node_modules from the one used to build above.
+    - source $NODEVENV/bin/activate && cd $DEPLOYPATH && npm install --omit=dev
+
+    # Attempts to trigger a Passenger-style restart. cPanel's Node.js
+    # Selector is commonly Passenger-based, which watches for this file —
+    # but this isn't guaranteed on every host. Verify after your first
+    # deploy; if the app doesn't pick up changes, restart manually via
+    # Setup Node.js App > Restart until confirmed working.
+    - mkdir -p $DEPLOYPATH/tmp
+    - touch $DEPLOYPATH/tmp/restart.txt
